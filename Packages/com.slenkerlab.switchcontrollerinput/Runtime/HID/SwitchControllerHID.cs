@@ -1,16 +1,16 @@
-using System;
+using System.Runtime.InteropServices;
 using UnityEngine.InputSystem.Controls;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Switch.LowLevel;
 using UnityEngine.InputSystem.Utilities;
-using System.Runtime.InteropServices;
-using System.Text;
 
 namespace UnityEngine.InputSystem.Switch
 {
+    // The device itself: its controls and state, and the conversion of the controller's input reports.
+    // The other parts of the class are in the SwitchControllerHID.*.cs files.
     [InputControlLayout(stateType = typeof(SwitchControllerVirtualInputState))]
-    public abstract class SwitchControllerHID : InputDevice, IInputStateCallbackReceiver, IEventPreProcessor
+    public abstract partial class SwitchControllerHID : InputDevice, IInputStateCallbackReceiver, IEventPreProcessor
     {
         #region Accelerometer/gyroscope controls
         public Vector3Control angularVelocity { get; private set; }
@@ -53,44 +53,6 @@ namespace UnityEngine.InputSystem.Switch
         public Color RightGripColor { get; protected set; } = Color.black;
         #endregion
 
-        #region Stick and IMU data
-        public struct CalibrationData
-        {
-            public StickCalibrationData lStickCalibData;
-            public StickCalibrationData rStickCalibData;
-            public IMUCalibrationData imuCalibData;
-        }
-
-        public CalibrationData calibrationData = new CalibrationData()
-        {
-            lStickCalibData = new StickCalibrationData()
-            {
-                xMin = 720,
-                xMax = 3408,
-                yMin = 654,
-                yMax = 2908
-            },
-            rStickCalibData = new StickCalibrationData()
-            {
-                xMin = 720,
-                xMax = 3408,
-                yMin = 654,
-                yMax = 2908
-            }
-        };
-        #endregion
-
-        /// <summary>Latest uncalibrated 12 bit stick positions as sent by the controller.</summary>
-        public Vector2Int RawLeftStick { get; private set; }
-        public Vector2Int RawRightStick { get; private set; }
-
-        private double m_lastReportTime;
-        private IMUData m_lastIMUData;
-
-        /// <summary>Gain of the sensor fusion, see <see cref="MadgwickFilter"/>.</summary>
-        public float MadgwickBeta = 0.01f;
-        private MadgwickFilter m_orientationFilter = MadgwickFilter.Identity;
-
         #region Generic data
         public BatteryLevelEnum BatteryLevel { get; protected set; } = BatteryLevelEnum.Empty;
         public bool BatteryIsCharging { get; protected set; } = false;
@@ -112,63 +74,21 @@ namespace UnityEngine.InputSystem.Switch
         public string SerialNumber { get; protected set; } = "N/A";
         #endregion
 
-        #region Data re/loading
+        #region Stick and IMU state
+        /// <summary>Latest uncalibrated 12 bit stick positions as sent by the controller.</summary>
+        public Vector2Int RawLeftStick { get; private set; }
+        public Vector2Int RawRightStick { get; private set; }
+
+        /// <summary>Gain of the sensor fusion, see <see cref="MadgwickFilter"/>.</summary>
+        public float MadgwickBeta = 0.01f;
+        private MadgwickFilter m_orientationFilter = MadgwickFilter.Identity;
+
+        private double m_lastReportTime;
+        private IMUData m_lastIMUData;
         private bool m_isInStandardReportMode = false;
-        private bool m_stickRestChecked = false;
-
-        /// <summary>
-        /// What is read from the controller after it connects, in the order it is requested.
-        /// </summary>
-        private enum SetupStep
-        {
-            Colors,
-            DeviceInfo,
-            StickCalibration,
-            SerialNumber,
-            FactoryIMUCalibration,
-            UserIMUCalibration,
-            EnableIMU,
-            Done
-        }
-
-        // Are the different device informations loaded ?
-        private bool m_stickConfigDataLoaded = false;
-        private bool m_deviceInfoLoaded = false;
-        private bool m_colorsLoaded = false;
-        private bool m_serialNumberLoaded = false;
-        private bool m_factoryIMUCalibrationLoaded = false;
-        private bool m_userIMUCalibrationLoaded = false;
-        private bool m_imuEnabled = false;
-
-        // The step that was requested last, when and how often, to request it again in case of timeout
-        private SetupStep m_setupStep;
-        private double m_timeOfLastRequest;
-        private int m_setupAttempts;
-
-        // Not every controller has an IMU or answers these requests (third party ones in particular),
-        // so the IMU steps are given up on after a few attempts.
-        private const int maxIMUSetupAttempts = 3;
-        private const double timeout = 1.0;
-        #endregion
-
-        #region Calibration Process
-        public enum CalibrationState
-        {
-            None,
-            InProgress,
-            Done
-        }
-        public CalibrationState CurrentCalibrationState { get; private set; } = CalibrationState.None;
-        public float CalibrationProgress { get; private set; } = 0f;
-        private double m_calibrationStartTime;
-        private float m_calibrationDuration;
-        private Vector3 m_accumulatedAccel;
-        private Vector3 m_accumulatedGyro;
-        private int m_sampleCount;
         #endregion
 
         #region Unity InputDevice boilerplate
-
         /// <summary>
         /// The last used/added Switch controller of any type.
         /// </summary>
@@ -274,9 +194,10 @@ namespace UnityEngine.InputSystem.Switch
             base.MakeCurrent();
             current = this;
         }
+
         #endregion
 
-        #region Adding, removal and late info updates on the device
+        #region Adding, removal and update of the device
         /// <inheritdoc />
         protected override void OnAdded()
         {
@@ -305,292 +226,8 @@ namespace UnityEngine.InputSystem.Switch
         public void OnNextUpdate()
         {
             // Handle calibration process first to ensure it's not blocked by other updates.
-            if (CurrentCalibrationState == CalibrationState.InProgress)
-            {
-                double elapsedTime = InputRuntime.s_Instance.currentTime - m_calibrationStartTime;
-                CalibrationProgress = (float)(elapsedTime / m_calibrationDuration);
-
-                // Accumulate data
-                m_accumulatedAccel += new Vector3(m_lastIMUData.accelX, m_lastIMUData.accelY, m_lastIMUData.accelZ);
-                m_accumulatedGyro += new Vector3(m_lastIMUData.gyro1, m_lastIMUData.gyro2, m_lastIMUData.gyro3);
-                m_sampleCount++;
-
-                if (elapsedTime >= m_calibrationDuration)
-                {
-                    // Finish calibration
-                    Vector3 avgAccel = m_accumulatedAccel / m_sampleCount;
-                    Vector3 avgGyro = m_accumulatedGyro / m_sampleCount;
-                    WriteUserIMUCalibrationData(avgAccel, avgGyro);
-                }
-            }
-
+            UpdateIMUCalibration();
             UpdateSetup();
-        }
-
-        private SetupStep GetPendingSetupStep()
-        {
-            if (!m_colorsLoaded)
-                return SetupStep.Colors;
-            if (!m_deviceInfoLoaded)
-                return SetupStep.DeviceInfo;
-            if (!m_stickConfigDataLoaded)
-                return SetupStep.StickCalibration;
-            if (!m_serialNumberLoaded)
-                return SetupStep.SerialNumber;
-            if (!m_factoryIMUCalibrationLoaded)
-                return SetupStep.FactoryIMUCalibration;
-            if (!m_userIMUCalibrationLoaded)
-                return SetupStep.UserIMUCalibration;
-            if (!m_imuEnabled)
-                return SetupStep.EnableIMU;
-            return SetupStep.Done;
-        }
-
-        /// <summary>
-        /// Request the next missing piece of device information, one at a time.
-        /// A request is sent again when the controller has not answered it within the timeout.
-        /// </summary>
-        private void UpdateSetup()
-        {
-            SetupStep step = GetPendingSetupStep();
-            if (step == SetupStep.Done)
-                return;
-
-            double currentTime = InputRuntime.s_Instance.currentTime;
-
-            if (step != m_setupStep)
-            {
-                m_setupStep = step;
-                m_setupAttempts = 0;
-            }
-            // Are we waiting for a response?
-            else if (currentTime <= m_timeOfLastRequest + timeout)
-                return;
-
-            if (step >= SetupStep.FactoryIMUCalibration && m_setupAttempts >= maxIMUSetupAttempts)
-            {
-                Debug.LogWarning($"{displayName}: no answer from the controller for {step}, giving up on the IMU setup");
-                m_factoryIMUCalibrationLoaded = true;
-                m_userIMUCalibrationLoaded = true;
-                m_imuEnabled = true;
-                return;
-            }
-
-            m_setupAttempts++;
-            m_timeOfLastRequest = currentTime;
-
-            switch (step)
-            {
-                case SetupStep.Colors:
-                    ReadColors();
-                    break;
-                case SetupStep.DeviceInfo:
-                    ReadControllerInfo();
-                    break;
-                case SetupStep.StickCalibration:
-                    ReadStickCalibrationData();
-                    break;
-                case SetupStep.SerialNumber:
-                    ReadSerialNumber();
-                    break;
-                // The user calibration is read after the factory one, to replace it if there is one
-                case SetupStep.FactoryIMUCalibration:
-                    ReadFactoryIMUCalibrationData();
-                    break;
-                case SetupStep.UserIMUCalibration:
-                    ReadUserIMUCalibrationData();
-                    break;
-                case SetupStep.EnableIMU:
-                    SetIMUEnabled(true);
-                    break;
-            }
-        }
-
-        #endregion
-
-        #region Public interactions with the controller (output reports)
-        // Number of the output report, increased with every report sent to this controller
-        private byte m_packetNumber;
-
-        /// <summary>
-        /// Send an output report to the controller. Every report carries rumble data and a subcommand,
-        /// the neutral ones are sent for whichever is not given.
-        /// </summary>
-        /// <param name="description">What the report does, for the error logged when sending it fails.</param>
-        private bool SendCommand(string description, SwitchControllerBaseSubcommand subcommand = null, SwitchControllerRumbleProfile? rumbleProfile = null)
-        {
-            var c = SwitchControllerCommand.Create(m_packetNumber++, rumbleProfile, subcommand);
-            if (ExecuteCommand(ref c) >= 0)
-                return true;
-
-            Debug.LogError($"{description} failed");
-            return false;
-        }
-
-        private void ReadSPIFlash(SPIFlashReadAddressEnum region, string description)
-        {
-            LogVerbose($"Requesting {description}...");
-            var readSubcommand = new SwitchControllerReadSPIFlashSubcommand(atAddress: (uint)region, withLength: SPIFlashRegion.Length(region));
-            SendCommand($"Read {description}", readSubcommand);
-        }
-
-        public void Rumble(SwitchControllerRumbleProfile rumbleProfile)
-        {
-            SendCommand("Rumble command", rumbleProfile: rumbleProfile);
-        }
-
-        public void ReadControllerInfo()
-        {
-            LogVerbose("Requesting device info...");
-            SendCommand("Request device info", new SwitchControllerRequestInfoSubcommand());
-        }
-
-        public void SetInputReportMode(InputModeEnum mode)
-        {
-            SendCommand($"Set report mode to {mode}", new SwitchControllerInputModeSubcommand(mode));
-            m_isInStandardReportMode = (mode == InputModeEnum.Standard);
-        }
-
-        public void SetIMUEnabled(bool active)
-        {
-            SendCommand($"Set IMU active to {active}", new SwitchControllerSetImuEnabledSubcommand { Enabled = active });
-        }
-
-        public void SetVibrationEnabled(bool active)
-        {
-            SendCommand($"Set vibration active to {active}", new SwitchControllerSetVibrationEnabledSubcommand { Enabled = active });
-        }
-
-        public void SetLEDs(
-            LEDStatusEnum p1 = LEDStatusEnum.Off,
-            LEDStatusEnum p2 = LEDStatusEnum.Off,
-            LEDStatusEnum p3 = LEDStatusEnum.Off,
-            LEDStatusEnum p4 = LEDStatusEnum.Off)
-        {
-            SendCommand("Set LEDs", new SwitchControllerSetLEDSubcommand(p1, p2, p3, p4));
-        }
-
-        public void ReadFactoryIMUCalibrationData() => ReadSPIFlash(SPIFlashReadAddressEnum.FactoryIMUCalibration, "factory IMU calibration");
-
-        public void ReadUserIMUCalibrationData() => ReadSPIFlash(SPIFlashReadAddressEnum.UserIMUCalibration, "user IMU calibration");
-
-        public void ReadColors() => ReadSPIFlash(SPIFlashReadAddressEnum.ColorData, "colors");
-
-        public void ReadStickCalibrationData() => ReadSPIFlash(SPIFlashReadAddressEnum.FactoryStickCalibration, "factory stick calibration");
-
-        public void ReadSerialNumber() => ReadSPIFlash(SPIFlashReadAddressEnum.SerialNumber, "serial number");
-
-        public void StartIMUCalibration(float duration = 5.0f)
-        {
-            if (CurrentCalibrationState == CalibrationState.InProgress)
-            {
-                Debug.LogWarning("Calibration is already in progress.");
-                return;
-            }
-            Debug.Log($"Starting IMU calibration for {duration} seconds. Keep the controller stable.");
-            CurrentCalibrationState = CalibrationState.InProgress;
-            m_calibrationStartTime = InputRuntime.s_Instance.currentTime;
-            m_calibrationDuration = duration;
-            m_accumulatedAccel = Vector3.zero;
-            m_accumulatedGyro = Vector3.zero;
-            m_sampleCount = 0;
-            CalibrationProgress = 0f;
-        }
-
-        /// <summary>
-        /// Calibrates the IMU by setting the current raw sensor values as the new base/offset.
-        /// The controller should be on a flat, stable surface when this is called.
-        /// This will write to the user calibration data section in the controller's SPI flash.
-        /// </summary>
-        private unsafe void WriteUserIMUCalibrationData(Vector3 averageAccel, Vector3 averageGyro)
-        {
-            LogVerbose($"Calibration finished. Average Accel: {averageAccel}, Average Gyro: {averageGyro}. Writing to controller...");
-
-            // The sensitivities are written back unchanged, so they have to be the ones read from the controller.
-            // Writing the zeroes we start with would leave the controller with an unusable user calibration.
-            if (!calibrationData.imuCalibData.IsValid)
-            {
-                Debug.LogError("IMU calibration was not written: the current calibration has to be read from the controller first");
-                CurrentCalibrationState = CalibrationState.None;
-                CalibrationProgress = 0f;
-                return;
-            }
-
-            // Create a 26-byte (0x1A) payload for user calibration data.
-            byte[] payload = new byte[0x1A];
-
-            // Magic number `0xB2 0xA1` at the start.
-            payload[0] = 0xB2;
-            payload[1] = 0xA1;
-
-            // Create a new calibration structure.
-            // The new 'base' is the averaged raw sensor value.
-            // For the accelerometer, we calculate the offset by removing the gravity component from the reading.
-            // 1. Normalize the average acceleration vector to get the direction of gravity.
-            Vector3 gravityDirection = new Vector3(averageAccel.x, averageAccel.y, averageAccel.z).normalized;
-            // 2. 1G corresponds to a raw value of ~4096 (since 4G is ~16384).
-            const float oneGAsRaw = 16384f / 4f;
-            // 3. Calculate the ideal gravity vector in the current orientation.
-            Vector3 idealGravityVector = gravityDirection * oneGAsRaw;
-            // 4. The offset is the measured value minus the ideal gravity vector.
-            Vector3 accelOffset = averageAccel - idealGravityVector;
-
-            // For the gyroscope, we zero out all axes as it should be perfectly still.
-            IMUCalibrationData newUserCalib = new IMUCalibrationData
-            {
-                accelBase = ToRawVector(accelOffset),
-                // keep factory coefficients unchanged
-                accelSensitivity = calibrationData.imuCalibData.accelSensitivity,
-
-                gyroBase = ToRawVector(averageGyro),
-                gyroSensitivity = calibrationData.imuCalibData.gyroSensitivity,
-                // keep factory coefficients unchanged
-            };
-
-            // Manually copy the relevant fields (Base and Sensitivity) to the payload to avoid overflow
-            // and to match the 24-byte structure expected by the controller's SPI flash.
-            // The coefficients are not stored on the device.
-            fixed (byte* p = &payload[2])
-            {
-                ushort* ushortPtr = (ushort*)p;
-                ushortPtr[0] = newUserCalib.accelBase.x;
-                ushortPtr[1] = newUserCalib.accelBase.y;
-                ushortPtr[2] = newUserCalib.accelBase.z;
-                ushortPtr[3] = newUserCalib.accelSensitivity.x;
-                ushortPtr[4] = newUserCalib.accelSensitivity.y;
-                ushortPtr[5] = newUserCalib.accelSensitivity.z;
-                ushortPtr[6] = newUserCalib.gyroBase.x;
-                ushortPtr[7] = newUserCalib.gyroBase.y;
-                ushortPtr[8] = newUserCalib.gyroBase.z;
-                ushortPtr[9] = newUserCalib.gyroSensitivity.x;
-                ushortPtr[10] = newUserCalib.gyroSensitivity.y;
-                ushortPtr[11] = newUserCalib.gyroSensitivity.z;
-            }
-
-            Debug.LogWarning("Writing current IMU calibration data to User SPI section. This is permanent!");
-
-            var writeSubcommand = new SwitchControllerWriteSPIFlashSubcommand(
-                atAddress: (uint)SPIFlashReadAddressEnum.UserIMUCalibration,
-                data: payload
-            );
-            SendCommand("Write user IMU calibration", writeSubcommand);
-
-            CurrentCalibrationState = CalibrationState.Done;
-            CalibrationProgress = 1f;
-        }
-
-        /// <summary>
-        /// The controller stores the sensor values as signed 16 bit integers. A negative float cannot be
-        /// cast to ushort directly, the result of that depends on the platform.
-        /// </summary>
-        private static Vector3UInt16 ToRawVector(Vector3 value)
-        {
-            return new Vector3UInt16
-            {
-                x = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(value.x), short.MinValue, short.MaxValue),
-                y = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(value.y), short.MinValue, short.MaxValue),
-                z = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(value.z), short.MinValue, short.MaxValue)
-            };
         }
 
         /// <summary>
@@ -611,6 +248,7 @@ namespace UnityEngine.InputSystem.Switch
 
             LogVerbose("Yaw has been reset.");
         }
+
         #endregion
 
         #region Input reports (answers from the controller)
@@ -619,20 +257,6 @@ namespace UnityEngine.InputSystem.Switch
         {
             public static FourCC Format => new FourCC('H', 'I', 'D');
             [FieldOffset(0)] public byte reportId;
-        }
-
-        [StructLayout(LayoutKind.Explicit, Size = kSize)]
-        private unsafe struct SwitchControllerSubcommandResponseInputReport
-        {
-            public static FourCC Format => new FourCC('H', 'I', 'D');
-            public const byte kSize = 50;
-
-            [FieldOffset(0)] public byte reportId;
-            [FieldOffset(2)] public byte batteryAndConnectionInfo;
-
-            [FieldOffset(13)] public byte ack;
-            [FieldOffset(14)] public byte subcommandId;
-            [FieldOffset(15)] public fixed byte replyData[35];
         }
 
         unsafe bool IEventPreProcessor.PreProcessEvent(InputEventPtr eventPtr)
@@ -672,7 +296,7 @@ namespace UnityEngine.InputSystem.Switch
                 LogVerbose("PreProcessEvent: Subcommand report mode");
                 var data = ((SwitchControllerSubcommandResponseInputReport*)stateEvent->state);
                 HandleSubcommand(*data);
-              return false;
+                return false;
             }
 
             // Full report mode!
@@ -692,56 +316,6 @@ namespace UnityEngine.InputSystem.Switch
                 LogVerbose($"Unknown report ID: {genericReport->reportId:X2}");
             }
             return false;
-        }
-
-        /// <summary>
-        /// The calibration stored on the controller (third party ones in particular) does not always match
-        /// where the stick actually rests, which makes the stick drift. The stick is assumed to be untouched
-        /// right after connecting, so if it reads outside of the deadzone then, its rest position becomes the center.
-        /// </summary>
-        private void RecenterStickIfOffCenter(ref StickCalibrationData calib, Vector2Int rest, string stickName)
-        {
-            const float tolerance = 0.1f;
-
-            if (calib.xCenter <= calib.xMin || calib.xCenter >= calib.xMax)
-                calib.xCenter = (ushort)((calib.xMin + calib.xMax) / 2);
-            if (calib.yCenter <= calib.yMin || calib.yCenter >= calib.yMax)
-                calib.yCenter = (ushort)((calib.yMin + calib.yMax) / 2);
-
-            LogVerbose($"{displayName}: {stickName} stick rests at ({rest.x};{rest.y}), calibration is X {calib.xMin}/{calib.xCenter}/{calib.xMax}, Y {calib.yMin}/{calib.yCenter}/{calib.yMax}");
-
-            int halfRangeX = (calib.xMax - calib.xMin) / 2;
-            int halfRangeY = (calib.yMax - calib.yMin) / 2;
-            if (Mathf.Abs(rest.x - calib.xCenter) <= halfRangeX * tolerance && Mathf.Abs(rest.y - calib.yCenter) <= halfRangeY * tolerance)
-                return;
-
-            Debug.LogWarning($"{displayName}: {stickName} stick calibration is off center, using the current stick position as center");
-            SetStickCenter(ref calib, rest);
-        }
-
-        private static void SetStickCenter(ref StickCalibrationData calib, Vector2Int rest)
-        {
-            int halfRangeX = (calib.xMax - calib.xMin) / 2;
-            int halfRangeY = (calib.yMax - calib.yMin) / 2;
-            calib.xMin = (ushort)Mathf.Clamp(rest.x - halfRangeX, 0, 0xFFF);
-            calib.xMax = (ushort)Mathf.Clamp(rest.x + halfRangeX, 0, 0xFFF);
-            calib.yMin = (ushort)Mathf.Clamp(rest.y - halfRangeY, 0, 0xFFF);
-            calib.yMax = (ushort)Mathf.Clamp(rest.y + halfRangeY, 0, 0xFFF);
-            calib.xCenter = (ushort)rest.x;
-            calib.yCenter = (ushort)rest.y;
-        }
-
-        /// <summary>
-        /// Use the position the stick(s) are in right now as their center. Call this while the sticks are untouched.
-        /// </summary>
-        public void RecenterSticks()
-        {
-            if (HasLeftStick)
-                SetStickCenter(ref calibrationData.lStickCalibData, RawLeftStick);
-            if (HasRightStick)
-                SetStickCenter(ref calibrationData.rStickCalibData, RawRightStick);
-            m_stickRestChecked = true;
-            LogVerbose($"{displayName}: sticks recentered");
         }
 
         private unsafe void HandleFullReport(StateEvent* stateEvent)
@@ -795,372 +369,6 @@ namespace UnityEngine.InputSystem.Switch
             int connectionInfo = batteryAndConnectionInfo & 0x0F;
             ControllerType = (ControllerTypeEnum)((connectionInfo >> 1) & 3);
             IsPoweredBySwitchOrUSB = (connectionInfo & 1) == 1;
-        }
-
-        private unsafe void HandleSubcommand(SwitchControllerSubcommandResponseInputReport response)
-        {
-            UpdateBatteryAndConnectionInfo(response.batteryAndConnectionInfo);
-
-            SubcommandIDEnum subcommandReplyId = (SubcommandIDEnum)response.subcommandId;
-            var subcommandWasAcknowledged = (response.ack & 0x80) != 0;
-
-            LogVerbose($"Subcommand response for {subcommandReplyId}: {response.ack:X2}");
-
-            if (subcommandWasAcknowledged)
-            {
-                switch (subcommandReplyId)
-                {
-                    case SubcommandIDEnum.RequestDeviceInfo:
-                        HandleDeviceInfo(response.replyData);
-                        break;
-                    case SubcommandIDEnum.SPIFlashRead:
-                        HandleFlashRead(response.replyData);
-                        break;
-                    case SubcommandIDEnum.EnableDisableIMU:
-                        m_imuEnabled = true;
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        private unsafe struct DeviceInfo
-        {
-            public byte firmwareVersionMaj;
-            public byte firmwareVersionMin;
-            public byte joyConType;
-            public byte unknown1;
-            public fixed byte macAddress[6];
-            public byte unknown2;
-            public byte useColorsFromSPI;
-        }
-
-        private unsafe void HandleDeviceInfo(byte* dataPtr)
-        {
-            DeviceInfo deviceInfo = (DeviceInfo)Marshal.PtrToStructure((IntPtr)dataPtr, typeof(DeviceInfo));
-
-            // Third party controllers sometimes report the wrong type here, so the type given by
-            // the matched layout (i.e. the product ID) wins over what the controller says about itself.
-            var reportedType = (SpecificControllerTypeEnum)deviceInfo.joyConType;
-            SpecificControllerType = LayoutControllerType != SpecificControllerTypeEnum.Unknown ? LayoutControllerType : reportedType;
-            if (reportedType != SpecificControllerType)
-                Debug.LogWarning($"{displayName} reports itself as {reportedType}, treating it as {SpecificControllerType}");
-            FirmwareVersion = String.Format($"{deviceInfo.firmwareVersionMaj:X1}.{deviceInfo.firmwareVersionMin:X2}");
-            MACAddress = String.Format($"{deviceInfo.macAddress[0]:X2}:{deviceInfo.macAddress[1]:X2}:{deviceInfo.macAddress[2]:X2}:{deviceInfo.macAddress[3]:X2}:{deviceInfo.macAddress[4]:X2}:{deviceInfo.macAddress[5]:X2}");
-
-            LogVerbose($"Firmware version is: {FirmwareVersion}, Joy-Con type is {SpecificControllerType}");
-            m_deviceInfoLoaded = true;
-        }
-
-        [StructLayout(LayoutKind.Explicit, Size = 3)]
-        private struct Rgb24Bit
-        {
-            [FieldOffset(0)] public byte r;
-            [FieldOffset(1)] public byte g;
-            [FieldOffset(2)] public byte b;
-
-            public Color ToUnityColor()
-            {
-                return new Color32(r, g, b, 255);
-            }
-        }
-
-        [StructLayout(LayoutKind.Explicit, Size = 3 * 4)]
-        private struct ControllerColors
-        {
-            [FieldOffset(0)] public Rgb24Bit bodyColor;
-            [FieldOffset(3)] public Rgb24Bit buttonColor;
-            [FieldOffset(6)] public Rgb24Bit leftGripColor;
-            [FieldOffset(9)] public Rgb24Bit rightGripColor;
-        }
-
-        private unsafe void HandleFlashRead(byte* dataPtr)
-        {
-            // The reply repeats the requested address (little endian) and length, followed by the data
-            uint address = (uint)(dataPtr[0] | dataPtr[1] << 8 | dataPtr[2] << 16 | dataPtr[3] << 24);
-            byte length = dataPtr[4];
-            byte* response = dataPtr + 5;
-            var region = (SPIFlashReadAddressEnum)address;
-
-            // Some third party controllers only return the body and button colors
-            if (region == SPIFlashReadAddressEnum.ColorData && length == 0x06)
-            {
-                LogVerbose("Read controller color data (body and buttons only)...");
-                BodyColor = new Color32(response[0], response[1], response[2], 255);
-                ButtonColor = new Color32(response[3], response[4], response[5], 255);
-                m_colorsLoaded = true;
-                return;
-            }
-
-            if (length == 0 || length != SPIFlashRegion.Length(region))
-            {
-                LogVerbose($"Unrecognized range: 0x{address:X4}-0x{address + length:X2} (length is {length:X2})");
-                return;
-            }
-
-            LogVerbose($"Read {region}...");
-            switch (region)
-            {
-                // Serial number in NON-extended ASCII
-                case SPIFlashReadAddressEnum.SerialNumber:
-                    DecodeSerialNumberData(response);
-                    m_serialNumberLoaded = true;
-                    break;
-
-                case SPIFlashReadAddressEnum.FactoryIMUCalibration:
-                    DecodeIMUCalibrationData((ushort*)response);
-                    m_factoryIMUCalibrationLoaded = true;
-                    break;
-
-                case SPIFlashReadAddressEnum.FactoryStickCalibration:
-                    DecodeStickCalibrationData(response);
-                    break;
-
-                case SPIFlashReadAddressEnum.ColorData:
-                    DecodeColorData(response);
-                    break;
-
-                case SPIFlashReadAddressEnum.UserIMUCalibration:
-                    // The user calibration data starts with the magic number 0xB2 0xA1 when it has been written.
-                    if (response[0] == 0xB2 && response[1] == 0xA1)
-                        DecodeIMUCalibrationData((ushort*)(response + 2));
-                    else
-                        LogVerbose("No user IMU calibration on the controller, keeping the factory one");
-                    m_userIMUCalibrationLoaded = true;
-                    break;
-
-                default:
-                    LogVerbose($"{region} is not decoded (not implemented)");
-                    break;
-            }
-        }
-        #endregion
-        #region Data decoding (byte to text/)
-        [StructLayout(LayoutKind.Sequential)]
-        public struct Vector3UInt16
-        {
-            public ushort x;
-            public ushort y;
-            public ushort z;
-
-            public override string ToString()
-            {
-                return $"({x}, {y}, {z})";
-            }
-        }
-
-        public struct IMUCalibrationData
-        {
-            public Vector3UInt16 accelBase;
-            public Vector3UInt16 accelSensitivity;
-
-            public Vector3UInt16 gyroBase;
-            public Vector3UInt16 gyroSensitivity;
-            
-            public Vector3 accelCoeff;
-            public Vector3 gyroCoeff;
-
-            /// <summary>
-            /// False as long as no calibration has been read from the controller, or if what was read is unusable.
-            /// </summary>
-            public bool IsValid =>
-                IsValidAxis(accelBase.x, accelSensitivity.x) && IsValidAxis(accelBase.y, accelSensitivity.y) && IsValidAxis(accelBase.z, accelSensitivity.z) &&
-                IsValidAxis(gyroBase.x, gyroSensitivity.x) && IsValidAxis(gyroBase.y, gyroSensitivity.y) && IsValidAxis(gyroBase.z, gyroSensitivity.z);
-
-            // The coefficients divide by the difference between the two, and blank flash reads as 0xFFFF
-            private static bool IsValidAxis(ushort axisBase, ushort axisSensitivity)
-            {
-                return axisSensitivity != 0 && axisSensitivity != 0xFFFF && axisSensitivity != axisBase;
-            }
-
-            public unsafe static IMUCalibrationData FromResponse(ushort* response)
-            {
-                return new IMUCalibrationData()
-                {
-                    accelBase = new Vector3UInt16()
-                    {
-                        x = response[0],
-                        y = response[1],
-                        z = response[2]
-                    },
-
-                    accelSensitivity = new Vector3UInt16()
-                    {
-                        x = response[3],
-                        y = response[4],
-                        z = response[5]
-                    },
-
-                    gyroBase = new Vector3UInt16()
-                    {
-                        x = response[6],
-                        y = response[7],
-                        z = response[8]
-                    },
-
-                    gyroSensitivity = new Vector3UInt16()
-                    {
-                        x = response[9],
-                        y = response[10],
-                        z = response[11]
-                    }
-                };
-            }
-
-            public override string ToString()
-            {
-                return $"accelBase = {accelBase}\naccelSen = {accelSensitivity}\ngyroBase = {gyroBase}\ngyroSen = {gyroSensitivity}";
-            }
-        }
-
-        private unsafe void DecodeSerialNumberData(byte* response)
-        {
-            StringBuilder snStringBuilder = new StringBuilder(15);
-
-            LogVerbose($"First byte is {(*response):X2}");
-            if ((*response) >= 0X80)
-            {
-                Debug.LogWarning("No valid serial number retrieved");
-                return;
-            }
-
-            for (int i = 0; i < 16; i++)
-            {
-                byte* serialDigit = response + i;
-                if (*serialDigit == 0x00)
-                    continue;
-
-                snStringBuilder.Append(Encoding.ASCII.GetString(serialDigit, 1));
-            }
-
-            SerialNumber = snStringBuilder.ToString();
-            m_serialNumberLoaded = true; // for prevent read serial infinity loop 
-        }
-
-        private unsafe void DecodeIMUCalibrationData(ushort* response)
-        {
-            var newCalibData = IMUCalibrationData.FromResponse(response);
-            if (!newCalibData.IsValid)
-            {
-                Debug.LogWarning($"{displayName}: ignoring unusable IMU calibration data ({newCalibData})");
-                return;
-            }
-
-            // Pre-calculate the coefficients once when calibration data is loaded.
-            // This avoids redundant calculations in every input report.
-            newCalibData.accelCoeff.x = 4.0f / ((short)newCalibData.accelSensitivity.x - (short)newCalibData.accelBase.x);
-            newCalibData.accelCoeff.y = 4.0f / ((short)newCalibData.accelSensitivity.y - (short)newCalibData.accelBase.y);
-            newCalibData.accelCoeff.z = 4.0f / ((short)newCalibData.accelSensitivity.z - (short)newCalibData.accelBase.z);
-
-            newCalibData.gyroCoeff.x = 936.0f / ((short)newCalibData.gyroSensitivity.x - (short)newCalibData.gyroBase.x);
-            newCalibData.gyroCoeff.y = 936.0f / ((short)newCalibData.gyroSensitivity.y - (short)newCalibData.gyroBase.y);
-            newCalibData.gyroCoeff.z = 936.0f / ((short)newCalibData.gyroSensitivity.z - (short)newCalibData.gyroBase.z);
-
-            calibrationData.imuCalibData = newCalibData;
-
-            LogVerbose("Calibration data: " + calibrationData.imuCalibData);
-        }
-
-        private unsafe void DecodeStickCalibrationData(byte* response)
-        {
-            var leftStickCalib = StickCalibrationData.FromFlash(response, isRightStick: false);
-            var rightStickCalib = StickCalibrationData.FromFlash(response + 9, isRightStick: true);
-
-            // Keep the previous (default) values for sticks whose calibration data is unusable,
-            // e.g. blank flash on a single Joy-Con's missing stick or on third party controllers.
-            if (leftStickCalib.IsValid)
-                calibrationData.lStickCalibData = leftStickCalib;
-            if (rightStickCalib.IsValid)
-                calibrationData.rStickCalibData = rightStickCalib;
-
-            LogVerbose($"Calibration data loaded");
-            m_stickConfigDataLoaded = true;
-            m_stickRestChecked = false;
-        }
-
-        private unsafe void DecodeColorData(byte* response)
-        {
-            ControllerColors colors = (ControllerColors)Marshal.PtrToStructure((IntPtr)response, typeof(ControllerColors));
-            BodyColor = colors.bodyColor.ToUnityColor();
-            ButtonColor = colors.buttonColor.ToUnityColor();
-            LeftGripColor = colors.leftGripColor.ToUnityColor();
-            RightGripColor = colors.rightGripColor.ToUnityColor();
-            m_colorsLoaded = true;
-
-            LogVerbose($"Colors loaded: {BodyColor}, {ButtonColor}");
-        }
-
-        public struct StickCalibrationData
-        {
-            public ushort xMin;
-            public ushort xMax;
-
-            public ushort yMin;
-            public ushort yMax;
-            public ushort xCenter;
-            public ushort yCenter;
-
-            public bool IsValid => xMin < xMax && yMin < yMax && xMax <= 0xFFF && yMax <= 0xFFF
-                && xMax - xMin > 0x400 && yMax - yMin > 0x400;
-
-            /// <summary>
-            /// Decode the 9 bytes a stick calibration takes in the SPI flash.
-            /// </summary>
-            internal static unsafe StickCalibrationData FromFlash(byte* stickCal, bool isRightStick)
-            {
-                // The bytes hold three pairs of 12 bit values, see
-                // https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/spi_flash_notes.md#analog-stick-factory-and-user-calibration
-                var pair0 = new Vector2Int((stickCal[1] << 8) & 0xF00 | stickCal[0], (stickCal[2] << 4) | (stickCal[1] >> 4));
-                var pair1 = new Vector2Int((stickCal[4] << 8) & 0xF00 | stickCal[3], (stickCal[5] << 4) | (stickCal[4] >> 4));
-                var pair2 = new Vector2Int((stickCal[7] << 8) & 0xF00 | stickCal[6], (stickCal[8] << 4) | (stickCal[7] >> 4));
-
-                // The two sticks store them in a different order
-                Vector2Int center = isRightStick ? pair0 : pair1;
-                Vector2Int minBelowCenter = isRightStick ? pair1 : pair2;
-                Vector2Int maxAboveCenter = isRightStick ? pair2 : pair0;
-
-                return new StickCalibrationData()
-                {
-                    xMin = (ushort)(center.x - minBelowCenter.x),
-                    xMax = (ushort)(center.x + maxAboveCenter.x),
-                    yMin = (ushort)(center.y - minBelowCenter.y),
-                    yMax = (ushort)(center.y + maxAboveCenter.y),
-                    xCenter = (ushort)center.x,
-                    yCenter = (ushort)center.y
-                };
-            }
-
-            /// <summary>
-            /// Map a raw 12 bit stick position to [-1, 1] on both axes.
-            /// </summary>
-            internal Vector2 Normalize(Vector2Int raw)
-            {
-                return new Vector2(
-                    NormalizeAxis(raw.x, xMin, xCenter, xMax),
-                    NormalizeAxis(raw.y, yMin, yCenter, yMax));
-            }
-
-            /// <summary>
-            /// Map a raw 12 bit axis value to [-1, 1] so that the calibrated center is exactly 0.
-            /// The center usually isn't halfway between min and max, so both halves are scaled separately.
-            /// </summary>
-            private static float NormalizeAxis(int raw, int min, int center, int max)
-            {
-                if (center <= min || center >= max)
-                    center = (min + max) / 2;
-
-                var value = raw >= center
-                    ? (float)(raw - center) / (max - center)
-                    : (float)(raw - center) / (center - min);
-                return Mathf.Clamp(value, -1f, 1f);
-            }
-
-            public override string ToString()
-            {
-                return String.Format($"Center: ({xCenter:X2};{yCenter:X2}), X range: [{xMin:X2}-{xMax:X2}], Y range: [{yMin:X2}-{yMax:X2}]");
-            }
         }
         #endregion
     }
