@@ -102,8 +102,6 @@ namespace UnityEngine.InputSystem.Switch
     
             byte byte2 = (byte)(lf + ((lf_amp >> 8) & 0xFF));
             byte byte3 = (byte)(lf_amp & 0xFF);
-            
-            Debug.Log($"HB {highBandFrequency} amp {highBandAmplitude}; LB {lowBandFrequency} amp {lowBandAmplitude}");
     
             return new SwitchControllerRumbleData
             {

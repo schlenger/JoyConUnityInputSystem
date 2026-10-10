@@ -22,8 +22,6 @@ namespace UnityEngine.InputSystem.Switch
                 .WithCapability("productId", 0x2006);
             
             InputSystem.RegisterLayout<SwitchJoyConLHID>(matches: matcher);
-            
-            Debug.Log("Joy-Con (L) layout registered");
         }
         
         [RuntimeInitializeOnLoadMethod]
@@ -70,8 +68,6 @@ namespace UnityEngine.InputSystem.Switch
                 .WithCapability("productId", 0x2007);
             
             InputSystem.RegisterLayout<SwitchJoyConRHID>(matches: matcher);
-            
-            Debug.Log("Joy-Con (R) layout registered");
         }
         
         [RuntimeInitializeOnLoadMethod]
@@ -119,8 +115,6 @@ namespace UnityEngine.InputSystem.Switch
                 .WithProduct(".+");
             
             InputSystem.RegisterLayout<SwitchProControllerNewHID>(matches: matcher);
-            
-            Debug.Log("Pro Controller layout registered");
         }
         
         [RuntimeInitializeOnLoadMethod]
