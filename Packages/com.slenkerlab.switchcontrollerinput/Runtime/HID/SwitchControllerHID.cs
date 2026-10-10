@@ -108,20 +108,30 @@ namespace UnityEngine.InputSystem.Switch
         #endregion
 
         #region Data re/loading
-        // Are the different device informations loaded ?
-        private bool m_IMUConfigDataLoaded = false;
-        private bool m_stickConfigDataLoaded = false;
+        private bool m_isInStandardReportMode = false;
         private bool m_stickRestChecked = false;
+
+        /// <summary>
+        /// What is read from the controller after it connects, in the order it is requested.
+        /// </summary>
+        private enum SetupStep
+        {
+            Colors,
+            DeviceInfo,
+            StickCalibration,
+            SerialNumber,
+            Done
+        }
+
+        // Are the different device informations loaded ?
+        private bool m_stickConfigDataLoaded = false;
         private bool m_deviceInfoLoaded = false;
         private bool m_colorsLoaded = false;
         private bool m_serialNumberLoaded = false;
 
-        // Register the time of last request to retry to fetch them in case of timeout
-        private double m_stickCalibrationTimeOfLastRequest;
-        private double m_infoTimeOfLastRequest;
-        private double m_colorsTimeOfLastRequest;
-        private double m_serialNumberTimeOfLastRequest;
-
+        // The step that was requested last and when, to request it again in case of timeout
+        private SetupStep m_setupStep;
+        private double m_timeOfLastRequest;
         private const double timeout = 1.0;
         #endregion
 
@@ -240,10 +250,7 @@ namespace UnityEngine.InputSystem.Switch
             SetInputReportMode(InputModeEnum.Standard);
 
             // Let the controller breathe for a sec before asking its info, color and calibration datas
-            m_colorsTimeOfLastRequest = InputRuntime.s_Instance.currentTime;
-            m_infoTimeOfLastRequest = InputRuntime.s_Instance.currentTime;
-            m_stickCalibrationTimeOfLastRequest = InputRuntime.s_Instance.currentTime;
-            m_serialNumberTimeOfLastRequest = InputRuntime.s_Instance.currentTime;
+            m_timeOfLastRequest = InputRuntime.s_Instance.currentTime;
         }
 
         /// <inheritdoc />
@@ -277,77 +284,55 @@ namespace UnityEngine.InputSystem.Switch
                 }
             }
 
+            UpdateSetup();
+        }
+
+        private SetupStep GetPendingSetupStep()
+        {
             if (!m_colorsLoaded)
-            {
-                UpdateColors();
-                return;
-            }
+                return SetupStep.Colors;
             if (!m_deviceInfoLoaded)
-            {
-                UpdateDeviceInfo();
-                return;
-            }
+                return SetupStep.DeviceInfo;
             if (!m_stickConfigDataLoaded)
-            {
-                UpdateStickCalibrationData();
-                return;
-            }
+                return SetupStep.StickCalibration;
             if (!m_serialNumberLoaded)
-            {
-                UpdateSerialNumber();
-                return;
-            }
+                return SetupStep.SerialNumber;
+            return SetupStep.Done;
         }
 
         /// <summary>
-        /// Update the devices color info if it is outdated
+        /// Request the next missing piece of device information, one at a time.
+        /// A request is sent again when the controller has not answered it within the timeout.
         /// </summary>
-        private void UpdateColors()
+        private void UpdateSetup()
         {
+            SetupStep step = GetPendingSetupStep();
+            if (step == SetupStep.Done)
+                return;
+
             double currentTime = InputRuntime.s_Instance.currentTime;
 
             // Are we waiting for a response?
-            if (currentTime > m_colorsTimeOfLastRequest + timeout)
+            if (step == m_setupStep && currentTime <= m_timeOfLastRequest + timeout)
+                return;
+
+            m_setupStep = step;
+            m_timeOfLastRequest = currentTime;
+
+            switch (step)
             {
-                m_colorsTimeOfLastRequest = currentTime;
-                ReadColors();
-            }
-        }
-
-        private void UpdateDeviceInfo()
-        {
-            double currentTime = InputRuntime.s_Instance.currentTime;
-
-            // Are we waiting for a response?
-            if (currentTime > m_infoTimeOfLastRequest + timeout)
-            {
-                m_infoTimeOfLastRequest = currentTime;
-                ReadControllerInfo();
-
-                // Also grab the serial number, because it's a device info that is not in the device info section
-                ReadSerialNumber();
-            }
-        }
-
-        private void UpdateStickCalibrationData()
-        {
-            double currentTime = InputRuntime.s_Instance.currentTime;
-
-            if (currentTime > m_stickCalibrationTimeOfLastRequest + timeout)
-            {
-                m_stickCalibrationTimeOfLastRequest = currentTime;
-                ReadStickCalibrationData();
-            }
-        }
-
-        private void UpdateSerialNumber()
-        {
-            double currentTime = InputRuntime.s_Instance.currentTime;
-
-            if (currentTime > m_serialNumberTimeOfLastRequest + timeout)
-            {
-                m_serialNumberTimeOfLastRequest = currentTime;
-                ReadSerialNumber();
+                case SetupStep.Colors:
+                    ReadColors();
+                    break;
+                case SetupStep.DeviceInfo:
+                    ReadControllerInfo();
+                    break;
+                case SetupStep.StickCalibration:
+                    ReadStickCalibrationData();
+                    break;
+                case SetupStep.SerialNumber:
+                    ReadSerialNumber();
+                    break;
             }
         }
 
@@ -393,7 +378,7 @@ namespace UnityEngine.InputSystem.Switch
         public void SetInputReportMode(InputModeEnum mode)
         {
             SendCommand($"Set report mode to {mode}", new SwitchControllerInputModeSubcommand(mode));
-            m_IMUConfigDataLoaded = (mode == InputModeEnum.Standard);
+            m_isInStandardReportMode = (mode == InputModeEnum.Standard);
         }
 
         public void SetIMUEnabled(bool active)
@@ -718,7 +703,7 @@ namespace UnityEngine.InputSystem.Switch
             var hidInputReport = fullInputReport->ToHIDInputReport(ref calibrationData, SpecificControllerType);
 
             // Sensor fusion using Madgwick's algorithm
-            if (m_IMUConfigDataLoaded)
+            if (m_isInStandardReportMode)
             {
                 // Madgwick's algorithm expects gyroscope data in radians per second.
                 m_orientationFilter.Update(hidInputReport.angularVelocity * Mathf.Deg2Rad, hidInputReport.acceleration, MadgwickBeta, deltaTime);
