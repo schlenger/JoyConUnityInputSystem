@@ -93,7 +93,7 @@ namespace UnityEngine.InputSystem.Switch
         public Vector2Int RawRightStick { get; private set; }
 
         private Vector3 m_currentOrientation = new Vector3();
-        private double m_lastUpdateTime;
+        private double m_lastReportTime;
         private IMUData m_lastIMUData;
 
         // Madgwick's Algorithm variables
@@ -253,7 +253,6 @@ namespace UnityEngine.InputSystem.Switch
             m_infoTimeOfLastRequest = InputRuntime.s_Instance.currentTime;
             m_stickCalibrationTimeOfLastRequest = InputRuntime.s_Instance.currentTime;
             m_serialNumberTimeOfLastRequest = InputRuntime.s_Instance.currentTime;
-            m_lastUpdateTime = InputRuntime.s_Instance.currentTime;
         }
 
         /// <inheritdoc />
@@ -287,8 +286,6 @@ namespace UnityEngine.InputSystem.Switch
                 }
             }
 
-            // Keep track of time for sensor fusion
-            m_lastUpdateTime = InputRuntime.s_Instance.currentTime;
             if (!m_colorsLoaded)
             {
                 UpdateColors();
@@ -767,15 +764,15 @@ namespace UnityEngine.InputSystem.Switch
 
         private unsafe void HandleFullReport(StateEvent* stateEvent)
         {
-            var currentTime = InputRuntime.s_Instance.currentTime;
-            var deltaTime = (float)(currentTime - m_lastUpdateTime);
-            // In editor mode (not playing), deltaTime can be close to zero, which stalls the orientation calculation.
-            // We'll use a fixed delta time based on the controller's report frequency (approx. 60Hz -> 15ms) as a fallback.
-            if (deltaTime < 0.001f)
-            {
+            // Several reports can be processed in the same update, so the time between two reports
+            // has to come from the events themselves and not from the time of the update.
+            var reportTime = stateEvent->baseEvent.time;
+            var deltaTime = (float)(reportTime - m_lastReportTime);
+            // For the first report, or when the timestamps are unusable, fall back to the controller's
+            // report interval (approx. 60Hz -> 15ms).
+            if (m_lastReportTime <= 0 || deltaTime < 0.001f || deltaTime > 0.1f)
                 deltaTime = 0.015f;
-            }
-            m_lastUpdateTime = currentTime;
+            m_lastReportTime = reportTime;
 
             SwitchControllerFullInputReport* fullInputReport = ((SwitchControllerFullInputReport*)stateEvent->state);
             m_lastIMUData = fullInputReport->imuData0ms; // Store the latest raw IMU data
