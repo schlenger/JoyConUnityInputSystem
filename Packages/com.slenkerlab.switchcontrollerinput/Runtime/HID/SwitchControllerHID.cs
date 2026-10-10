@@ -775,6 +775,7 @@ namespace UnityEngine.InputSystem.Switch
             m_lastReportTime = reportTime;
 
             SwitchControllerFullInputReport* fullInputReport = ((SwitchControllerFullInputReport*)stateEvent->state);
+            UpdateBatteryAndConnectionInfo(fullInputReport->batteryAndConnectionInfo);
             m_lastIMUData = fullInputReport->imuData0ms; // Store the latest raw IMU data
             RawLeftStick = fullInputReport->RawLeftStick;
             RawRightStick = fullInputReport->RawRightStick;
@@ -805,15 +806,22 @@ namespace UnityEngine.InputSystem.Switch
             stateEvent->stateFormat = SwitchControllerVirtualInputState.Format;
         }
 
-        private unsafe void HandleSubcommand(SwitchControllerSubcommandResponseInputReport response)
+        /// <summary>
+        /// Every input report carries the battery level in its high nibble and the connection info in its low nibble.
+        /// </summary>
+        private void UpdateBatteryAndConnectionInfo(byte batteryAndConnectionInfo)
         {
-            // Connection info
-            BatteryLevel = (BatteryLevelEnum)((response.batteryAndConnectionInfo & 0xE0) >> 4);
-            BatteryIsCharging = (response.batteryAndConnectionInfo & 0x10) >> 4 != 0;
+            BatteryLevel = (BatteryLevelEnum)((batteryAndConnectionInfo & 0xE0) >> 4);
+            BatteryIsCharging = (batteryAndConnectionInfo & 0x10) != 0;
 
-            int connectionInfo = response.batteryAndConnectionInfo & 0x0F;
+            int connectionInfo = batteryAndConnectionInfo & 0x0F;
             ControllerType = (ControllerTypeEnum)((connectionInfo >> 1) & 3);
             IsPoweredBySwitchOrUSB = (connectionInfo & 1) == 1;
+        }
+
+        private unsafe void HandleSubcommand(SwitchControllerSubcommandResponseInputReport response)
+        {
+            UpdateBatteryAndConnectionInfo(response.batteryAndConnectionInfo);
 
             SubcommandIDEnum subcommandReplyId = (SubcommandIDEnum)response.subcommandId;
             var subcommandWasAcknowledged = (response.ack & 0x80) != 0;
