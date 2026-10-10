@@ -170,7 +170,7 @@ namespace UnityEngine.InputSystem.Switch
         #region Unity InputDevice boilerplate
 
         /// <summary>
-        /// The last used/added Joy-Con (R) controller.
+        /// The last used/added Switch controller of any type.
         /// </summary>
         public static SwitchControllerHID current { get; private set; }
 
@@ -190,12 +190,36 @@ namespace UnityEngine.InputSystem.Switch
         /// [InitializeOnLoad] constructor, which may run after ours. Force it to run first so that
         /// RegisterLayout does not hit a null manager.
         /// </summary>
-        protected static void EnsureInputSystemInitialized()
+        private static void EnsureInputSystemInitialized()
         {
 #if UNITY_EDITOR
             System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(
                 typeof(UnityEngine.InputSystem.Editor.InputSystemEditorInitializer).TypeHandle);
 #endif
+        }
+
+        private const int nintendoVendorId = 0x57E;
+
+        /// <summary>
+        /// Register the layout of a controller type, to be used for the HID devices with the given product ID.
+        /// </summary>
+        /// <param name="matchAnyProductName">
+        /// Also match on the product name, whatever it is. The extra pattern makes the layout win over
+        /// a built-in one that only matches the same vendor and product ID.
+        /// </param>
+        protected static void RegisterControllerLayout<TDevice>(int productId, bool matchAnyProductName = false)
+            where TDevice : SwitchControllerHID
+        {
+            EnsureInputSystemInitialized();
+
+            var matcher = new InputDeviceMatcher()
+                .WithInterface("HID")
+                .WithCapability("vendorId", nintendoVendorId)
+                .WithCapability("productId", productId);
+            if (matchAnyProductName)
+                matcher = matcher.WithProduct(".+");
+
+            InputSystem.RegisterLayout<TDevice>(matches: matcher);
         }
 
         /// <inheritdoc />

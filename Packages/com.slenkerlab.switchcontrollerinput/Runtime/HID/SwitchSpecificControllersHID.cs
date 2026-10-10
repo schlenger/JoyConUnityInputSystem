@@ -14,21 +14,14 @@ namespace UnityEngine.InputSystem.Switch
     {
         static SwitchJoyConLHID()
         {
-            EnsureInputSystemInitialized();
-
-            var matcher = new InputDeviceMatcher()
-                .WithInterface("HID")
-                .WithCapability("vendorId", 0x57E)
-                .WithCapability("productId", 0x2006);
-            
-            InputSystem.RegisterLayout<SwitchJoyConLHID>(matches: matcher);
+            RegisterControllerLayout<SwitchJoyConLHID>(productId: 0x2006);
         }
-        
+
         [RuntimeInitializeOnLoadMethod]
         static void Init() { }
 
         /// <summary>
-        /// The last used/added Joy-Con (R) controller.
+        /// The last used/added Joy-Con (L) controller.
         /// </summary>
         public static new SwitchJoyConLHID current { get; private set; }
 
@@ -49,9 +42,7 @@ namespace UnityEngine.InputSystem.Switch
                 current = null;
         }
     }
-    
-    
-    
+
     [InputControlLayout(stateType = typeof(SwitchControllerVirtualInputState), displayName = "Joy-Con (R)")]
 #if UNITY_EDITOR
     [InitializeOnLoad]
@@ -60,16 +51,9 @@ namespace UnityEngine.InputSystem.Switch
     {
         static SwitchJoyConRHID()
         {
-            EnsureInputSystemInitialized();
-
-            var matcher = new InputDeviceMatcher()
-                .WithInterface("HID")
-                .WithCapability("vendorId", 0x57E)
-                .WithCapability("productId", 0x2007);
-            
-            InputSystem.RegisterLayout<SwitchJoyConRHID>(matches: matcher);
+            RegisterControllerLayout<SwitchJoyConRHID>(productId: 0x2007);
         }
-        
+
         [RuntimeInitializeOnLoadMethod]
         static void Init() { }
 
@@ -86,7 +70,7 @@ namespace UnityEngine.InputSystem.Switch
             base.MakeCurrent();
             current = this;
         }
-        
+
         /// <inheritdoc />
         protected override void OnRemoved()
         {
@@ -95,7 +79,7 @@ namespace UnityEngine.InputSystem.Switch
                 current = null;
         }
     }
-    
+
     [InputControlLayout(stateType = typeof(SwitchControllerVirtualInputState), displayName = "Pro Controller")]
 #if UNITY_EDITOR
     [InitializeOnLoad]
@@ -104,24 +88,16 @@ namespace UnityEngine.InputSystem.Switch
     {
         static SwitchProControllerNewHID()
         {
-            EnsureInputSystemInitialized();
-
-            var matcher = new InputDeviceMatcher()
-                .WithInterface("HID")
-                .WithCapability("vendorId", 0x57E)
-                .WithCapability("productId", 0x2009)
-                // Any product name. The name differs per platform and connection ("Pro Controller" on macOS),
-                // and the extra pattern makes this layout win over the built-in SwitchProControllerHID.
-                .WithProduct(".+");
-            
-            InputSystem.RegisterLayout<SwitchProControllerNewHID>(matches: matcher);
+            // The product name differs per platform and connection ("Pro Controller" on macOS), and matching
+            // on it is what makes this layout win over the built-in SwitchProControllerHID.
+            RegisterControllerLayout<SwitchProControllerNewHID>(productId: 0x2009, matchAnyProductName: true);
         }
-        
+
         [RuntimeInitializeOnLoadMethod]
         static void Init() { }
 
         /// <summary>
-        /// The last used/added Joy-Con (R) controller.
+        /// The last used/added Pro Controller.
         /// </summary>
         public static new SwitchProControllerNewHID current { get; private set; }
 
@@ -133,7 +109,7 @@ namespace UnityEngine.InputSystem.Switch
             base.MakeCurrent();
             current = this;
         }
-        
+
         /// <inheritdoc />
         protected override void OnRemoved()
         {
