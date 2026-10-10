@@ -12,7 +12,6 @@ namespace UnityEngine.InputSystem.Switch
         public static FourCC Type => new FourCC('H', 'I', 'D', 'O');
         public FourCC typeStatic => Type;
     
-        internal const int id = 0;
         internal const int kSize = InputDeviceCommand.BaseCommandSize + 49;
     
         [FieldOffset(0)]

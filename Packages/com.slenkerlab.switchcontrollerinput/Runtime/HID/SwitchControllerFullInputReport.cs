@@ -7,7 +7,6 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
     unsafe struct SwitchControllerFullInputReport
     {
         public const int kSize = 362;
-        public const byte ExpectedReportId = 0x30;
 
         [FieldOffset(0)] public byte reportId;
         [FieldOffset(1)] public byte timer;
@@ -79,8 +78,6 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
                 var leftStickX = NormalizeStickAxis(rawLeftStickHoriz, lStickCalibData.xMin, lStickCalibData.xCenter, lStickCalibData.xMax);
                 var leftStickY = NormalizeStickAxis(rawLeftStickVert, lStickCalibData.yMin, lStickCalibData.yCenter, lStickCalibData.yMax);
                 leftStickVec = new Vector2(leftStickX, leftStickY);
-
-                // Debug.Log($"Left stick data: Raw: ({rawLeftStickHoriz:X3};{rawLeftStickVert:X3}) Calibration data: Center=({lStickCalibData.xCenter:X3},{lStickCalibData.yCenter:X3}); X=[{lStickCalibData.xMin:X3} - {lStickCalibData.xMax:X3}]; Y=[{lStickCalibData.yMin:X3} - {lStickCalibData.yMax:X3}]   Final data: {leftStickVec}");
             }
 
             if (controllerType == SpecificControllerTypeEnum.RightJoyCon ||
@@ -97,11 +94,8 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
                 var rightStickX = NormalizeStickAxis(rawRightStickHoriz, rStickCalibData.xMin, rStickCalibData.xCenter, rStickCalibData.xMax);
                 var rightStickY = NormalizeStickAxis(rawRightStickVert, rStickCalibData.yMin, rStickCalibData.yCenter, rStickCalibData.yMax);
                 rightStickVec = new Vector2(rightStickX, rightStickY);
-
-                // Debug.Log($"Right stick data: Raw: ({rawRightStickHoriz:X3};{rawRightStickVert:X3}) Calibration data: Center=({rStickCalibData.xCenter:X3},{rStickCalibData.yCenter:X3}); X=[{rStickCalibData.xMin:X3} - {rStickCalibData.xMax:X3}]; Y=[{rStickCalibData.yMin:X3} - {rStickCalibData.yMax:X3}]   Final data: {rightStickVec}");
             }
 
-            // Debug.Log($"Creating input stuff: right stick is {rightStickVec}");
             Vector3 uncalibratedAccel = imuData0ms.UncalibratedAcceleration;
             Vector3 uncalibratedGyro = imuData0ms.UncalibratedGyro;
             Vector3 calibratedAccel = imuData0ms.CalibratedAcceleration(ref calibData.imuCalibData);

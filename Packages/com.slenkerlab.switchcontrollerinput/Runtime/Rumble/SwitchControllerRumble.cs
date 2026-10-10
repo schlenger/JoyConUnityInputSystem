@@ -76,16 +76,6 @@ namespace UnityEngine.InputSystem.Switch
         [FieldOffset(2)] public byte lowBandFreq;
         [FieldOffset(3)] public byte lowBandAmplitude;
     
-        public static SwitchControllerRumbleData CreateNeutral()
-        {
-            return new SwitchControllerRumbleData {
-                highBandLowerFreq = 0x00,
-                highBandAmplitude = 0x01,
-                lowBandFreq = 0x40,
-                lowBandAmplitude = 0x40
-            };
-        }
-    
         public static SwitchControllerRumbleData CreateEmpty()
         {
             return new SwitchControllerRumbleData {

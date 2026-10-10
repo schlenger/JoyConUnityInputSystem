@@ -1,23 +1,15 @@
 using System;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 using UnityEngine.InputSystem.Controls;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Switch.LowLevel;
 using UnityEngine.InputSystem.Utilities;
 using System.Runtime.InteropServices;
-using Unity.Collections.LowLevel.Unsafe;
 using System.Text;
-using System.Collections.Generic;
 
 namespace UnityEngine.InputSystem.Switch
 {
     [InputControlLayout(stateType = typeof(SwitchControllerVirtualInputState))]
-#if UNITY_EDITOR
-    [InitializeOnLoad]
-#endif
     public abstract class SwitchControllerHID : InputDevice, IInputStateCallbackReceiver, IEventPreProcessor
     {
         #region Accelerometer/gyroscope controls
@@ -92,15 +84,12 @@ namespace UnityEngine.InputSystem.Switch
         public Vector2Int RawLeftStick { get; private set; }
         public Vector2Int RawRightStick { get; private set; }
 
-        private Vector3 m_currentOrientation = new Vector3();
         private double m_lastReportTime;
         private IMUData m_lastIMUData;
 
         // Madgwick's Algorithm variables
         public float MadgwickBeta = 0.01f; // Algorithm gain
         private float q0 = 1.0f, q1 = 0.0f, q2 = 0.0f, q3 = 0.0f; // Quaternion of sensor frame relative to auxiliary frame
-
-        // public float kComplementaryFilterGain = 0.98f; // No longer used
 
         #region Generic data
         public BatteryLevelEnum BatteryLevel { get; protected set; } = BatteryLevelEnum.Empty;
@@ -126,7 +115,6 @@ namespace UnityEngine.InputSystem.Switch
         private bool m_deviceInfoLoaded = false;
         private bool m_colorsLoaded = false;
         private bool m_serialNumberLoaded = false;
-        private bool m_imuCalibrationDataLoaded = false;
 
         // Register the time of last request to retry to fetch them in case of timeout
         private double m_stickCalibrationTimeOfLastRequest;
@@ -134,9 +122,6 @@ namespace UnityEngine.InputSystem.Switch
         private double m_colorsTimeOfLastRequest;
         private double m_serialNumberTimeOfLastRequest;
 
-        // Timeout vars
-        private const int configTimerDataDefault = 500;
-        private int m_configDataTimer = configTimerDataDefault;
         private const double timeout = 1.0;
         #endregion
 
@@ -163,8 +148,6 @@ namespace UnityEngine.InputSystem.Switch
         /// </summary>
         public static SwitchControllerHID current { get; private set; }
 
-        static SwitchControllerHID() { }
-
         /// <summary>
         /// Since InputSystem 1.20 the editor-side manager is created by InputSystemEditorInitializer's
         /// [InitializeOnLoad] constructor, which may run after ours. Force it to run first so that
@@ -177,9 +160,6 @@ namespace UnityEngine.InputSystem.Switch
                 typeof(UnityEngine.InputSystem.Editor.InputSystemEditorInitializer).TypeHandle);
 #endif
         }
-
-        [RuntimeInitializeOnLoadMethod]
-        static void Init() { }
 
         /// <inheritdoc />
         public unsafe void OnStateEvent(InputEventPtr eventPtr)
@@ -376,32 +356,6 @@ namespace UnityEngine.InputSystem.Switch
             var c = SwitchControllerCommand.Create(subcommand: new SwitchControllerRequestInfoSubcommand());
             if (ExecuteCommand(ref c) < 0)
                 Debug.LogError("Request device info failed");
-        }
-
-        public void DoBluetoothPairing()
-        {
-            // step 1
-            // TODO: This step should send the bluetooth address of the host as the second argument
-            var s1 = new SwitchControllerBluetoothManualPairingSubcommand();
-            s1.ValueByte = 0x01;
-            var c1 = SwitchControllerCommand.Create(subcommand: s1);
-
-            var s2 = new SwitchControllerBluetoothManualPairingSubcommand();
-            s2.ValueByte = 0x02;
-            var c2 = SwitchControllerCommand.Create(subcommand: s2);
-
-            var s3 = new SwitchControllerBluetoothManualPairingSubcommand();
-            s3.ValueByte = 0x03;
-            var c3 = SwitchControllerCommand.Create(subcommand: s3);
-            if (ExecuteCommand(ref c1) < 0)
-                Debug.LogError("Step 1 of bluetooth pairing failed");
-
-            if (ExecuteCommand(ref c2) < 0)
-                //! Fails here (see TODO above)
-                Debug.LogError("Step 2 of bluetooth pairing failed");
-
-            if (ExecuteCommand(ref c3) < 0)
-                Debug.LogError("Step 3 of bluetooth pairing failed");
         }
 
         public void SetInputReportMode(InputModeEnum mode)
@@ -643,7 +597,6 @@ namespace UnityEngine.InputSystem.Switch
         {
             public static FourCC Format => new FourCC('H', 'I', 'D');
             public const byte kSize = 50;
-            public const byte expectedReportId = 0x21;
 
             [FieldOffset(0)] public byte reportId;
             [FieldOffset(2)] public byte batteryAndConnectionInfo;
@@ -873,14 +826,6 @@ namespace UnityEngine.InputSystem.Switch
             m_deviceInfoLoaded = true;
         }
 
-        [StructLayout(LayoutKind.Explicit, Size = 18)]
-        private unsafe struct RawStickCalibrationData
-        {
-            [FieldOffset(0)] public fixed byte lStick[9];
-            [FieldOffset(9)] public fixed byte rStick[9];
-        }
-
-
         [StructLayout(LayoutKind.Explicit, Size = 3)]
         private struct Rgb24Bit
         {
@@ -931,7 +876,6 @@ namespace UnityEngine.InputSystem.Switch
             {
                 Debug.Log($"Read factory IMU calibration data...");
                 DecodeIMUCalibrationData((ushort*)response);
-                m_imuCalibrationDataLoaded = true;
             }
 
             // Factory analog stick calibration
@@ -989,9 +933,7 @@ namespace UnityEngine.InputSystem.Switch
                 else
                 {
                     Debug.LogWarning("User IMU calibration data does not contain the expected magic number. don't decode.");
-                    // DecodeIMUCalibrationData((ushort*)response);
                 }
-                m_imuCalibrationDataLoaded = true;
             }
 
             else
@@ -1002,19 +944,6 @@ namespace UnityEngine.InputSystem.Switch
         }
         #endregion
         #region Data decoding (byte to text/)
-        [StructLayout(LayoutKind.Sequential)]
-        public struct Vector3Int16
-        {
-            public short x;
-            public short y;
-            public short z;
-
-            public override string ToString()
-            {
-                return $"({x}, {y}, {z})";
-            }
-        }
-
         [StructLayout(LayoutKind.Sequential)]
         public struct Vector3UInt16
         {
@@ -1324,11 +1253,6 @@ namespace UnityEngine.InputSystem.Switch
 
             public bool IsValid => xMin < xMax && yMin < yMax && xMax <= 0xFFF && yMax <= 0xFFF
                 && xMax - xMin > 0x400 && yMax - yMin > 0x400;
-
-            public static StickCalibrationData CreateEmpty()
-            {
-                return new StickCalibrationData() { xMin = 0, xMax = 0, yMin = 0, yMax = 0, xCenter = 0, yCenter = 0 };
-            }
 
             public override string ToString()
             {

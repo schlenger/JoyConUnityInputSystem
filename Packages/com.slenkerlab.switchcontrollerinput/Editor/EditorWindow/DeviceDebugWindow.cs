@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.Switch.LowLevel;
 using UnityEngine.InputSystem.Switch;
 
 namespace SwitchControllerInput.Editor
