@@ -7,8 +7,6 @@ namespace UnityEngine.InputSystem.Switch
     [StructLayout(LayoutKind.Explicit, Size = kSize)]
     internal unsafe struct SwitchControllerCommand : IInputDeviceCommandInfo
     {
-        private static byte globalNumber = 0x0;
-    
         public static FourCC Type => new FourCC('H', 'I', 'D', 'O');
         public FourCC typeStatic => Type;
     
@@ -34,7 +32,7 @@ namespace UnityEngine.InputSystem.Switch
         public SwitchControllerBaseSubcommandStruct subcommand;
     
         
-        public static SwitchControllerCommand Create(SwitchControllerRumbleProfile? rumbleProfile = null, SwitchControllerBaseSubcommand subcommand = null)
+        public static SwitchControllerCommand Create(byte packetNumber, SwitchControllerRumbleProfile? rumbleProfile = null, SwitchControllerBaseSubcommand subcommand = null)
         {
             SwitchControllerDualRumbleData rumbleData;
             if (rumbleProfile != null)
@@ -67,11 +65,10 @@ namespace UnityEngine.InputSystem.Switch
             {
                 baseCommand = new InputDeviceCommand(Type, kSize),
                 first = 0x01,
-                globalCount = globalNumber,
+                globalCount = packetNumber,
                 rumbleData = rumbleData,
                 subcommand = subcommand.GetSubcommand()
             };
-            globalNumber+=1;
             return command;
         }
     }

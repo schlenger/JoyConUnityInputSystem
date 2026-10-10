@@ -5,18 +5,40 @@ namespace UnityEngine.InputSystem.Switch
     /// See https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/spi_flash_notes.md for more precisions on how to use it.
     /// </summary>
     /// <remarks>
-    /// The length depends on what you want to retrieve, but the generic ones are noted next to the addresses below.
+    /// The length to read for each of them is given by <see cref="SPIFlashRegion.Length"/>.
     /// </remarks>
     public enum SPIFlashReadAddressEnum : uint 
     {
-        SerialNumber = 0x6000, // 0x10
-        DeviceType = 0x6012, // 0x01
-        ColorInfoExists = 0x601B, // 0x01
-        FactoryIMUCalibration = 0x6020, // 0x18
-        FactoryStickCalibration = 0x603D, // 0x12
-        ColorData = 0x6050, // 0x0B
-        UserStickCalibration = 0x8010, // 0x16
-        UserIMUCalibration = 0x8026, // 0x1A
+        SerialNumber = 0x6000,
+        DeviceType = 0x6012,
+        ColorInfoExists = 0x601B,
+        FactoryIMUCalibration = 0x6020,
+        FactoryStickCalibration = 0x603D,
+        ColorData = 0x6050,
+        UserStickCalibration = 0x8010,
+        UserIMUCalibration = 0x8026,
+    }
+
+    public static class SPIFlashRegion
+    {
+        /// <summary>
+        /// Number of bytes stored at the given address, or 0 if the address is not a known one.
+        /// </summary>
+        public static byte Length(SPIFlashReadAddressEnum region)
+        {
+            switch (region)
+            {
+                case SPIFlashReadAddressEnum.SerialNumber: return 0x10;
+                case SPIFlashReadAddressEnum.DeviceType: return 0x01;
+                case SPIFlashReadAddressEnum.ColorInfoExists: return 0x01;
+                case SPIFlashReadAddressEnum.FactoryIMUCalibration: return 0x18;
+                case SPIFlashReadAddressEnum.FactoryStickCalibration: return 0x12;
+                case SPIFlashReadAddressEnum.ColorData: return 0x0B;
+                case SPIFlashReadAddressEnum.UserStickCalibration: return 0x16;
+                case SPIFlashReadAddressEnum.UserIMUCalibration: return 0x1A;
+                default: return 0;
+            }
+        }
     }
     
     public enum BatteryLevelEnum

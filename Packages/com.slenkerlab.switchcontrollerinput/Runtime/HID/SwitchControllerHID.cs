@@ -354,47 +354,56 @@ namespace UnityEngine.InputSystem.Switch
         #endregion
 
         #region Public interactions with the controller (output reports)
+        // Number of the output report, increased with every report sent to this controller
+        private byte m_packetNumber;
+
+        /// <summary>
+        /// Send an output report to the controller. Every report carries rumble data and a subcommand,
+        /// the neutral ones are sent for whichever is not given.
+        /// </summary>
+        /// <param name="description">What the report does, for the error logged when sending it fails.</param>
+        private bool SendCommand(string description, SwitchControllerBaseSubcommand subcommand = null, SwitchControllerRumbleProfile? rumbleProfile = null)
+        {
+            var c = SwitchControllerCommand.Create(m_packetNumber++, rumbleProfile, subcommand);
+            if (ExecuteCommand(ref c) >= 0)
+                return true;
+
+            Debug.LogError($"{description} failed");
+            return false;
+        }
+
+        private void ReadSPIFlash(SPIFlashReadAddressEnum region, string description)
+        {
+            LogVerbose($"Requesting {description}...");
+            var readSubcommand = new SwitchControllerReadSPIFlashSubcommand(atAddress: (uint)region, withLength: SPIFlashRegion.Length(region));
+            SendCommand($"Read {description}", readSubcommand);
+        }
+
         public void Rumble(SwitchControllerRumbleProfile rumbleProfile)
         {
-            var c = SwitchControllerCommand.Create(rumbleProfile);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Rumble command failed");
+            SendCommand("Rumble command", rumbleProfile: rumbleProfile);
         }
 
         public void ReadControllerInfo()
         {
             LogVerbose("Requesting device info...");
-            var c = SwitchControllerCommand.Create(subcommand: new SwitchControllerRequestInfoSubcommand());
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Request device info failed");
+            SendCommand("Request device info", new SwitchControllerRequestInfoSubcommand());
         }
 
         public void SetInputReportMode(InputModeEnum mode)
         {
-            var c = SwitchControllerCommand.Create(subcommand: new SwitchControllerInputModeSubcommand(mode));
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError($"Set report mode to {mode} failed");
+            SendCommand($"Set report mode to {mode}", new SwitchControllerInputModeSubcommand(mode));
             m_IMUConfigDataLoaded = (mode == InputModeEnum.Standard);
         }
 
         public void SetIMUEnabled(bool active)
         {
-            var s = new SwitchControllerSetImuEnabledSubcommand();
-            s.Enabled = active;
-
-            var c = SwitchControllerCommand.Create(subcommand: s);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError($"Set IMU active to {active} failed");
+            SendCommand($"Set IMU active to {active}", new SwitchControllerSetImuEnabledSubcommand { Enabled = active });
         }
 
         public void SetVibrationEnabled(bool active)
         {
-            var s = new SwitchControllerSetVibrationEnabledSubcommand();
-            s.Enabled = active;
-
-            var c = SwitchControllerCommand.Create(subcommand: s);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError($"Set vibration active to {active} failed");
+            SendCommand($"Set vibration active to {active}", new SwitchControllerSetVibrationEnabledSubcommand { Enabled = active });
         }
 
         public void SetLEDs(
@@ -403,55 +412,18 @@ namespace UnityEngine.InputSystem.Switch
             LEDStatusEnum p3 = LEDStatusEnum.Off,
             LEDStatusEnum p4 = LEDStatusEnum.Off)
         {
-            var c = SwitchControllerCommand.Create(subcommand: new SwitchControllerSetLEDSubcommand(p1, p2, p3, p4));
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Set LEDs failed");
+            SendCommand("Set LEDs", new SwitchControllerSetLEDSubcommand(p1, p2, p3, p4));
         }
 
-        public void ReadFactoryIMUCalibrationData()
-        {
-            var readSubcommand = new SwitchControllerReadSPIFlashSubcommand(atAddress: (uint)SPIFlashReadAddressEnum.FactoryIMUCalibration, withLength: 0x18);
-            LogVerbose($"Requesting Factory IMU calibration info...");
-            var c = SwitchControllerCommand.Create(subcommand: readSubcommand);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Read Factory IMU calibration info failed");
-        }
+        public void ReadFactoryIMUCalibrationData() => ReadSPIFlash(SPIFlashReadAddressEnum.FactoryIMUCalibration, "factory IMU calibration");
 
-        public void ReadUserIMUCalibrationData()
-        {
-            var readSubcommand = new SwitchControllerReadSPIFlashSubcommand(atAddress: (uint)SPIFlashReadAddressEnum.UserIMUCalibration, withLength: 0x1A);
-            LogVerbose($"Requesting User IMU calibration info...");
-            var c = SwitchControllerCommand.Create(subcommand: readSubcommand);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Read User IMU calibration info failed");
-        }
+        public void ReadUserIMUCalibrationData() => ReadSPIFlash(SPIFlashReadAddressEnum.UserIMUCalibration, "user IMU calibration");
 
-        public void ReadColors()
-        {
-            var readSubcommand = new SwitchControllerReadSPIFlashSubcommand(atAddress: (uint)SPIFlashReadAddressEnum.ColorData, withLength: 0x0B);
-            LogVerbose($"Requesting color info...");
-            var c = SwitchControllerCommand.Create(subcommand: readSubcommand);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Read color info failed");
-        }
+        public void ReadColors() => ReadSPIFlash(SPIFlashReadAddressEnum.ColorData, "colors");
 
-        public void ReadStickCalibrationData()
-        {
-            var readSubcommand = new SwitchControllerReadSPIFlashSubcommand(atAddress: (uint)SPIFlashReadAddressEnum.FactoryStickCalibration, withLength: 0x12);
-            LogVerbose($"Requesting factory stick calibration info...");
-            var c = SwitchControllerCommand.Create(subcommand: readSubcommand);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Read factory stick calibration info failed");
-        }
+        public void ReadStickCalibrationData() => ReadSPIFlash(SPIFlashReadAddressEnum.FactoryStickCalibration, "factory stick calibration");
 
-        public void ReadSerialNumber()
-        {
-            var readSubcommand = new SwitchControllerReadSPIFlashSubcommand(atAddress: (uint)SPIFlashReadAddressEnum.SerialNumber, withLength: 0x10);
-            LogVerbose($"Requesting device serial number...");
-            var c = SwitchControllerCommand.Create(subcommand: readSubcommand);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Read device serial number failed");
-        }
+        public void ReadSerialNumber() => ReadSPIFlash(SPIFlashReadAddressEnum.SerialNumber, "serial number");
 
         public void StartIMUCalibration(float duration = 5.0f)
         {
@@ -546,9 +518,7 @@ namespace UnityEngine.InputSystem.Switch
                 atAddress: (uint)SPIFlashReadAddressEnum.UserIMUCalibration,
                 data: payload
             );
-            var c = SwitchControllerCommand.Create(subcommand: writeSubcommand);
-            if (ExecuteCommand(ref c) < 0)
-                Debug.LogError("Write User IMU calibration info failed");
+            SendCommand("Write user IMU calibration", writeSubcommand);
 
             CurrentCalibrationState = CalibrationState.Done;
             CalibrationProgress = 1f;
@@ -850,97 +820,61 @@ namespace UnityEngine.InputSystem.Switch
 
         private unsafe void HandleFlashRead(byte* dataPtr)
         {
-            byte[] data = new byte[35];
-            Marshal.Copy(new IntPtr(dataPtr), data, 0, 35);
-            uint address = BitConverter.ToUInt32(data, 0);
-            byte length = data[4];
-
+            // The reply repeats the requested address (little endian) and length, followed by the data
+            uint address = (uint)(dataPtr[0] | dataPtr[1] << 8 | dataPtr[2] << 16 | dataPtr[3] << 24);
+            byte length = dataPtr[4];
             byte* response = dataPtr + 5;
-
-            // Shipment data, unsure
-            if (address == 0x5000 && length == 0x01)
-            {
-                LogVerbose("Read shipment data... (not implemented)");
-            }
-
-            // Serial number in NON-extended ASCII
-            else if (address == (uint)SPIFlashReadAddressEnum.SerialNumber && length == 0x10)
-            {
-                LogVerbose("Read serial number...");
-                DecodeSerialNumberData(response);
-                m_serialNumberLoaded = true;
-            }
-
-            // IMU factory calibration
-            else if (address == (uint)SPIFlashReadAddressEnum.FactoryIMUCalibration && length == 0x18)
-            {
-                LogVerbose($"Read factory IMU calibration data...");
-                DecodeIMUCalibrationData((ushort*)response);
-            }
-
-            // Factory analog stick calibration
-            else if (address == (uint)SPIFlashReadAddressEnum.FactoryStickCalibration && length == 0x12)
-            {
-                LogVerbose("Read factory analog stick calibration data...");
-                DecodeStickCalibrationData(response);
-            }
-
-            // Colors
-            else if (address == (uint)SPIFlashReadAddressEnum.ColorData && length == 0x0B)
-            {
-                LogVerbose("Read controller color data...");
-                DecodeColorData(response);
-            }
+            var region = (SPIFlashReadAddressEnum)address;
 
             // Some third party controllers only return the body and button colors
-            else if (address == (uint)SPIFlashReadAddressEnum.ColorData && length == 0x06)
+            if (region == SPIFlashReadAddressEnum.ColorData && length == 0x06)
             {
                 LogVerbose("Read controller color data (body and buttons only)...");
                 BodyColor = new Color32(response[0], response[1], response[2], 255);
                 ButtonColor = new Color32(response[3], response[4], response[5], 255);
                 m_colorsLoaded = true;
+                return;
             }
 
-            // Stick device parameters 1
-            else if (address == 0x6086 && length == 0x12)
-            {
-                LogVerbose("Read stick device params 1 data... (not implemented)");
-            }
-
-            // Stick device parameters 2
-            else if (address == 0x6098 && length == 0x12)
-            {
-                LogVerbose("Read stick device params 2 data... (not implemented)");
-            }
-
-            // User analog stick calibration
-            else if (address == (uint)SPIFlashReadAddressEnum.UserStickCalibration && length == 0x16)
-            {
-                LogVerbose("Read user analog stick calibration data... (not implemented)");
-            }
-
-            // IMU user calibration
-            else if (address == (uint)SPIFlashReadAddressEnum.UserIMUCalibration && length == 0x1A)
-            {
-                LogVerbose($"Read user IMU calibration data...");
-                // The user calibration data has a 2-byte magic number at the start.
-                // We need to skip it before decoding.
-                // The magic number is 0xB2 0xA1.
-                if (response[0] == 0xB2 && response[1] == 0xA1)
-                {
-                    DecodeIMUCalibrationData((ushort*)(response + 2)); // Skip the 2-byte magic number
-                }
-                else
-                {
-                    Debug.LogWarning("User IMU calibration data does not contain the expected magic number. don't decode.");
-                }
-            }
-
-            else
+            if (length == 0 || length != SPIFlashRegion.Length(region))
             {
                 LogVerbose($"Unrecognized range: 0x{address:X4}-0x{address + length:X2} (length is {length:X2})");
+                return;
             }
 
+            LogVerbose($"Read {region}...");
+            switch (region)
+            {
+                // Serial number in NON-extended ASCII
+                case SPIFlashReadAddressEnum.SerialNumber:
+                    DecodeSerialNumberData(response);
+                    m_serialNumberLoaded = true;
+                    break;
+
+                case SPIFlashReadAddressEnum.FactoryIMUCalibration:
+                    DecodeIMUCalibrationData((ushort*)response);
+                    break;
+
+                case SPIFlashReadAddressEnum.FactoryStickCalibration:
+                    DecodeStickCalibrationData(response);
+                    break;
+
+                case SPIFlashReadAddressEnum.ColorData:
+                    DecodeColorData(response);
+                    break;
+
+                case SPIFlashReadAddressEnum.UserIMUCalibration:
+                    // The user calibration data starts with the magic number 0xB2 0xA1 when it has been written.
+                    if (response[0] == 0xB2 && response[1] == 0xA1)
+                        DecodeIMUCalibrationData((ushort*)(response + 2));
+                    else
+                        Debug.LogWarning("User IMU calibration data does not contain the expected magic number. don't decode.");
+                    break;
+
+                default:
+                    LogVerbose($"{region} is not decoded (not implemented)");
+                    break;
+            }
         }
         #endregion
         #region Data decoding (byte to text/)
