@@ -25,6 +25,14 @@ The package requires Unity 6 (6000.0) or newer and version 1.20.0 or newer of th
   - Controllers that only return the body and button colors are supported.
 - **Pro Controller**: matched by vendor and product ID regardless of the product name, which differs per platform (e.g. "Pro Controller" on macOS). This also makes the layout take precedence over the Input System's built-in `SwitchProControllerHID`.
 - **Input System 1.20**: fixed the layouts being registered before the Input System is initialized in the editor.
+- **IMU**
+  - The IMU is enabled and its calibration is read when a controller connects. The user calibration is used if the controller has one, otherwise the factory calibration.
+  - The orientation is integrated with the time between the controller's reports instead of a fixed time step.
+  - Writing a user calibration no longer stores unusable values on the controller.
+- **Battery**: the battery level and charging state stay up to date while the controller is connected.
+- **Rumble**: frequencies are clamped to the range the controller supports, see the constants on `SwitchControllerRumbleProfile`.
+- **Player builds**: the package compiles for standalone players.
+- **Logging**: the package only logs warnings and errors, unless `SwitchControllerHID.VerboseLogging` is set to `true`.
 
 ## Notes
 
@@ -86,7 +94,7 @@ The HD Rumble features can be tested `Windows/Switch Controller Debugger/Joycon 
 
 ### Gyroscope and acceleration (partial)
 
-Once the controller's IMU has been enabled with `SwitchControllerHID.SetIMUEnabled(true)`, it will report uncalibrated acceleration and gyroscope data. In my testing, this data isn't particularly accurate, so we should figure out how to improve it.
+The controller's IMU is enabled when it connects, and can be turned off and on with `SwitchControllerHID.SetIMUEnabled()`. The `acceleration` and `angularVelocity` controls use the calibration stored on the controller, the raw values are available as `uncalibratedAcceleration` and `uncalibratedAngularVelocity`. `deviceRotation` is the orientation estimated from both.
 
 ### Player LEDs
 
@@ -96,10 +104,10 @@ Example:
 
 ```c#
 controller.SetLEDs(
-    p1: SwitchControllerLEDStatusEnum.Off,
-    p2: SwitchControllerLEDStatusEnum.On,
-    p3: SwitchControllerLEDStatusEnum.Flashing,
-    p4: SwitchControllerLEDStatusEnum.On
+    p1: LEDStatusEnum.Off,
+    p2: LEDStatusEnum.On,
+    p3: LEDStatusEnum.Flashing,
+    p4: LEDStatusEnum.On
     );
 ```
 
