@@ -1,7 +1,7 @@
 {
   "dependencies": {
-    "com.canopteks.switchcontrollerinput": {
-      "version": "file:com.canopteks.switchcontrollerinput",
+    "com.slenkerlab.switchcontrollerinput": {
+      "version": "file:com.slenkerlab.switchcontrollerinput",
       "depth": 0,
       "source": "embedded",
       "dependencies": {

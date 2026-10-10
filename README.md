@@ -8,7 +8,7 @@ This is a prototype for Nintendo Switch controller Bluetooth support for the new
 
 ## Installation
 
-Using the Unity Package Manager, add the package from the following git URL: <https://github.com/schlenger/JoyConUnityInputSystem.git?path=/Packages/com.canopteks.switchcontrollerinput>.
+Using the Unity Package Manager, add the package from the following git URL: <https://github.com/schlenger/JoyConUnityInputSystem.git?path=/Packages/com.slenkerlab.switchcontrollerinput>.
 
 The package requires Unity 6 (6000.0) or newer and version 1.20.0 or newer of the Input System package.
 

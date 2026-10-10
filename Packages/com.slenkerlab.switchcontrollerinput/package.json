@@ -1,5 +1,5 @@
 {
-  "name": "com.canopteks.switchcontrollerinput",
+  "name": "com.slenkerlab.switchcontrollerinput",
   "version": "1.0.0",
   "displayName": "SwitchControllerInput",
   "description": "Package providing compatibility for Nintendo Switch controllers using the Unity's InputSystem. Provides also tools for input reading, vibration and accelerometer/gyroscope control.",
