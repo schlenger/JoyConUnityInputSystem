@@ -48,7 +48,7 @@ namespace SwitchControllerInput.Editor
             if (controller == null)
             {
                 GUILayout.BeginHorizontal("box");
-                GUILayout.Label(prefix + " Joycon Controller", EditorStyles.boldLabel);
+                GUILayout.Label(prefix + " Controller", EditorStyles.boldLabel);
                 GUILayout.Label("(disconnected)");
                 GUILayout.EndHorizontal();
             }
@@ -96,10 +96,10 @@ namespace SwitchControllerInput.Editor
                     EditorGUILayout.Separator();
 
                     GUILayout.Label("Stick data: ", EditorStyles.boldLabel);
-                    string calibrationText = "";
-                    if (isLeft) calibrationText = controller.calibrationData.lStickCalibData.ToString();
-                    if (isRight) calibrationText = controller.calibrationData.rStickCalibData.ToString();
-                    EditorGUILayout.LabelField("Stick calibration data: ", calibrationText);
+                    if (!isRight)
+                        EditorGUILayout.LabelField("Left stick calibration: ", controller.calibrationData.lStickCalibData.ToString());
+                    if (!isLeft)
+                        EditorGUILayout.LabelField("Right stick calibration: ", controller.calibrationData.rStickCalibData.ToString());
 
                     EditorGUILayout.Separator();
                     GUILayout.Label("IMU data: ", EditorStyles.boldLabel);
@@ -151,6 +151,7 @@ namespace SwitchControllerInput.Editor
                         controller.SetIMUEnabled(false);
                     }
                     EditorGUILayout.EndHorizontal();
+                    GUI.enabled = true;
 
                     EditorGUILayout.Separator();
                     GUILayout.Label("LEDs: ", EditorStyles.boldLabel);
