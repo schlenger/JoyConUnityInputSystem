@@ -46,9 +46,9 @@ namespace SwitchControllerInput.Editor
                 else 
                 {
                     GUILayout.Label("Left controller: ", EditorStyles.boldLabel);
-                    rumbleProfile.highBandFrequencyLeft = EditorGUILayout.Slider("High band frequency: ", rumbleProfile.highBandFrequencyLeft, 82, 1253);
+                    rumbleProfile.highBandFrequencyLeft = EditorGUILayout.Slider("High band frequency: ", rumbleProfile.highBandFrequencyLeft, SwitchControllerRumbleProfile.HighBandFrequencyMin, SwitchControllerRumbleProfile.HighBandFrequencyMax);
                     rumbleProfile.highBandAmplitudeLeft = EditorGUILayout.Slider("High band amplitude: ", rumbleProfile.highBandAmplitudeLeft, 0, 1);
-                    rumbleProfile.lowBandFrequencyLeft = EditorGUILayout.Slider("Low band frequency: ", rumbleProfile.lowBandFrequencyLeft, 41, 626);
+                    rumbleProfile.lowBandFrequencyLeft = EditorGUILayout.Slider("Low band frequency: ", rumbleProfile.lowBandFrequencyLeft, SwitchControllerRumbleProfile.LowBandFrequencyMin, SwitchControllerRumbleProfile.LowBandFrequencyMax);
                     rumbleProfile.lowBandAmplitudeLeft = EditorGUILayout.Slider("Low band amplitude: ", rumbleProfile.lowBandAmplitudeLeft, 0, 1);
                 }
 
@@ -64,9 +64,9 @@ namespace SwitchControllerInput.Editor
                 else 
                 {
                     GUILayout.Label("Right controller: ", EditorStyles.boldLabel);
-                    rumbleProfile.highBandFrequencyRight = EditorGUILayout.Slider("High band frequency: ", rumbleProfile.highBandFrequencyRight, 82, 1253);
+                    rumbleProfile.highBandFrequencyRight = EditorGUILayout.Slider("High band frequency: ", rumbleProfile.highBandFrequencyRight, SwitchControllerRumbleProfile.HighBandFrequencyMin, SwitchControllerRumbleProfile.HighBandFrequencyMax);
                     rumbleProfile.highBandAmplitudeRight = EditorGUILayout.Slider("High band amplitude: ", rumbleProfile.highBandAmplitudeRight, 0, 1);
-                    rumbleProfile.lowBandFrequencyRight = EditorGUILayout.Slider("Low band frequency: ", rumbleProfile.lowBandFrequencyRight, 41, 626);
+                    rumbleProfile.lowBandFrequencyRight = EditorGUILayout.Slider("Low band frequency: ", rumbleProfile.lowBandFrequencyRight, SwitchControllerRumbleProfile.LowBandFrequencyMin, SwitchControllerRumbleProfile.LowBandFrequencyMax);
                     rumbleProfile.lowBandAmplitudeRight = EditorGUILayout.Slider("Low band amplitude: ", rumbleProfile.lowBandAmplitudeRight, 0, 1);
                 }
 

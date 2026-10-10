@@ -6,6 +6,12 @@ namespace UnityEngine.InputSystem.Switch
     [Serializable]
     public struct SwitchControllerRumbleProfile
     {
+        // Frequency ranges in Hz the controller can encode
+        public const float HighBandFrequencyMin = 82f;
+        public const float HighBandFrequencyMax = 1253f;
+        public const float LowBandFrequencyMin = 41f;
+        public const float LowBandFrequencyMax = 626f;
+
         public float highBandFrequencyLeft;
         public float highBandAmplitudeLeft;
         public float lowBandFrequencyLeft;
@@ -120,19 +126,19 @@ namespace UnityEngine.InputSystem.Switch
     
         public static byte FrequencyToHex(float freq)
         {
-            if (freq < 0f) freq = 0f;
-            else if (freq > 1252f) freq = 1252f;
             return (byte)Mathf.RoundToInt(Mathf.Log(freq / 10.0f, 2) * 32.0f);
         }
     
         public static ushort FrequencyToHFRange(float freq)
         {
+            freq = Mathf.Clamp(freq, SwitchControllerRumbleProfile.HighBandFrequencyMin, SwitchControllerRumbleProfile.HighBandFrequencyMax);
             byte encodedHexFrequency = FrequencyToHex(freq);
             return (ushort)((encodedHexFrequency - 0x60) * 4);
         }
     
         public static byte FrequencyToLFRange(float freq)
         {
+            freq = Mathf.Clamp(freq, SwitchControllerRumbleProfile.LowBandFrequencyMin, SwitchControllerRumbleProfile.LowBandFrequencyMax);
             byte encodedHexFrequency = FrequencyToHex(freq);
             return (byte)(encodedHexFrequency - 0x40);
         }

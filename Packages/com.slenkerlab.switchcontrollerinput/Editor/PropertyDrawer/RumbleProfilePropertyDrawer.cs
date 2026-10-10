@@ -13,10 +13,10 @@ namespace SwitchControllerInput.Editor
     public class RumbleProfilePropertyDrawer : PropertyDrawer
     {
         // Ranges for high and low band frequencies, and amplitudes
-        private const float highBandFrequencyMin = 82f;
-        private const float highBandFrequencyMax = 1253f;
-        private const float lowBandFrequencyMin = 41f;
-        private const float lowBandFrequencyMax = 626f;
+        private const float highBandFrequencyMin = SwitchControllerRumbleProfile.HighBandFrequencyMin;
+        private const float highBandFrequencyMax = SwitchControllerRumbleProfile.HighBandFrequencyMax;
+        private const float lowBandFrequencyMin = SwitchControllerRumbleProfile.LowBandFrequencyMin;
+        private const float lowBandFrequencyMax = SwitchControllerRumbleProfile.LowBandFrequencyMax;
         private const float amplitudeMin = 0f;
         private const float amplitudeMax = 1f;
          
