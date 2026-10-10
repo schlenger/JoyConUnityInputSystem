@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem.Switch;
@@ -35,15 +34,15 @@ public class RumbleTest : MonoBehaviour
         OnHFAmpUpdated(m_hfAmp.value);
         OnLFFreqUpdated(m_lfFreq.value);
         OnLFAmpUpdated(m_lfAmp.value);
-        jc = SwitchControllerHID.current;
 
         StartCoroutine(RumbleCoroutine());
     }
 
     void Update() {
-        // if (jc.buttonSouth.wasPressedThisFrame) {
-        //     PlaySong();
-        // }
+        // The controller may connect or disconnect while the scene is running
+        jc = SwitchControllerHID.current;
+        if (jc == null)
+            return;
 
         m_bodyColorImage.color = jc.BodyColor;
         m_buttonColorImage.color = jc.ButtonColor;
@@ -64,7 +63,7 @@ public class RumbleTest : MonoBehaviour
     {
         while (true)
         {
-            if (m_toggle.isOn)
+            if (m_toggle.isOn && jc != null)
             {
                 jc.Rumble(m_profile);
             }
@@ -130,6 +129,9 @@ public class RumbleTest : MonoBehaviour
 
     IEnumerator PlayNote(SwitchControllerRumbleProfile p)
     {
+        if (jc == null)
+            yield break;
+
         jc.Rumble(p);
         yield return new WaitForSeconds(0.3f);
 
