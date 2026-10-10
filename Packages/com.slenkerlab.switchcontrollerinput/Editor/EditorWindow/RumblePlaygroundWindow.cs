@@ -129,6 +129,7 @@ namespace SwitchControllerInput.Editor
                     GUILayout.EndHorizontal();
                 }
             }
+            EditorGUILayout.EndFoldoutHeaderGroup();
 
             return fold;
         }
