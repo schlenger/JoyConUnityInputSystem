@@ -101,6 +101,11 @@ namespace UnityEngine.InputSystem.Switch
         /// The controller type implied by the layout the device was matched to. Unknown if the layout is generic.
         /// </summary>
         protected virtual SpecificControllerTypeEnum LayoutControllerType => SpecificControllerTypeEnum.Unknown;
+
+        /// <summary>A single Joy-Con only has the stick of its side.</summary>
+        public bool HasLeftStick => SpecificControllerType != SpecificControllerTypeEnum.RightJoyCon;
+        public bool HasRightStick => SpecificControllerType != SpecificControllerTypeEnum.LeftJoyCon;
+
         public bool IsPoweredBySwitchOrUSB { get; protected set; } = false;
         public string FirmwareVersion { get; protected set; } = "X.X";
         public string MACAddress { get; protected set; } = "XX.XX.XX.XX.XX.XX";
@@ -707,9 +712,9 @@ namespace UnityEngine.InputSystem.Switch
         /// </summary>
         public void RecenterSticks()
         {
-            if (SpecificControllerType != SpecificControllerTypeEnum.RightJoyCon)
+            if (HasLeftStick)
                 SetStickCenter(ref calibrationData.lStickCalibData, RawLeftStick);
-            if (SpecificControllerType != SpecificControllerTypeEnum.LeftJoyCon)
+            if (HasRightStick)
                 SetStickCenter(ref calibrationData.rStickCalibData, RawRightStick);
             m_stickRestChecked = true;
             LogVerbose($"{displayName}: sticks recentered");
@@ -736,12 +741,12 @@ namespace UnityEngine.InputSystem.Switch
             if (m_stickConfigDataLoaded && !m_stickRestChecked)
             {
                 m_stickRestChecked = true;
-                if (SpecificControllerType != SpecificControllerTypeEnum.RightJoyCon)
-                    RecenterStickIfOffCenter(ref calibrationData.lStickCalibData, fullInputReport->RawLeftStick, "Left");
-                if (SpecificControllerType != SpecificControllerTypeEnum.LeftJoyCon)
-                    RecenterStickIfOffCenter(ref calibrationData.rStickCalibData, fullInputReport->RawRightStick, "Right");
+                if (HasLeftStick)
+                    RecenterStickIfOffCenter(ref calibrationData.lStickCalibData, RawLeftStick, "Left");
+                if (HasRightStick)
+                    RecenterStickIfOffCenter(ref calibrationData.rStickCalibData, RawRightStick, "Right");
             }
-            var hidInputReport = fullInputReport->ToHIDInputReport(ref calibrationData, SpecificControllerType);
+            var hidInputReport = fullInputReport->ToHIDInputReport(ref calibrationData, HasLeftStick, HasRightStick);
 
             // Sensor fusion using Madgwick's algorithm
             if (m_isInStandardReportMode)
@@ -1036,15 +1041,15 @@ namespace UnityEngine.InputSystem.Switch
 
         private unsafe void DecodeStickCalibrationData(byte* response)
         {
+            var leftStickCalib = StickCalibrationData.FromFlash(response, isRightStick: false);
+            var rightStickCalib = StickCalibrationData.FromFlash(response + 9, isRightStick: true);
+
             // Keep the previous (default) values for sticks whose calibration data is unusable,
             // e.g. blank flash on a single Joy-Con's missing stick or on third party controllers.
-            var previous = calibrationData;
-            DecodeLeftStickData(response);
-            DecodeRightStickData(response + 9);
-            if (!calibrationData.lStickCalibData.IsValid)
-                calibrationData.lStickCalibData = previous.lStickCalibData;
-            if (!calibrationData.rStickCalibData.IsValid)
-                calibrationData.rStickCalibData = previous.rStickCalibData;
+            if (leftStickCalib.IsValid)
+                calibrationData.lStickCalibData = leftStickCalib;
+            if (rightStickCalib.IsValid)
+                calibrationData.rStickCalibData = rightStickCalib;
 
             LogVerbose($"Calibration data loaded");
             m_stickConfigDataLoaded = true;
@@ -1063,86 +1068,6 @@ namespace UnityEngine.InputSystem.Switch
             LogVerbose($"Colors loaded: {BodyColor}, {ButtonColor}");
         }
 
-        /// <summary>
-        /// Decode the calibration part of the packet into human readable values.
-        /// </summary>
-        /// <param name="stickCal">Array of 9 bytes.</param>
-        /// <returns>Array of 6 ushort values meaning different wether it is for left or right stick (see <see cref="DecodeLeftStickData"/> and <see cref="DecodeRightStickData"/> </returns>
-        private unsafe ushort[] DecodeStickData(byte* stickCal)
-        {
-            // yoinked from
-            // https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/spi_flash_notes.md#analog-stick-factory-and-user-calibration
-            ushort[] data = new ushort[6];
-            data[0] = (ushort)((stickCal[1] << 8) & 0xF00 | stickCal[0]);
-            data[1] = (ushort)((stickCal[2] << 4) | (stickCal[1] >> 4));
-            data[2] = (ushort)((stickCal[4] << 8) & 0xF00 | stickCal[3]);
-            data[3] = (ushort)((stickCal[5] << 4) | (stickCal[4] >> 4));
-            data[4] = (ushort)((stickCal[7] << 8) & 0xF00 | stickCal[6]);
-            data[5] = (ushort)((stickCal[8] << 4) | (stickCal[7] >> 4));
-            return data;
-        }
-
-        /// <summary>
-        /// Decode the calibration part of the packet for the left stick.
-        /// </summary>
-        /// <param name="lStickCal">Array of 9 bytes.</param>
-        private unsafe void DecodeLeftStickData(byte* lStickCal)
-        {
-            ushort[] decoded = DecodeStickData(lStickCal);
-
-            ushort xAxisMaxAboveCenter = decoded[0];
-            ushort yAxisMaxAboveCenter = decoded[1];
-            ushort xAxisCenter = decoded[2];
-            ushort yAxisCenter = decoded[3];
-            ushort xAxisMinBelowCenter = decoded[4];
-            ushort yAxisMinBelowCenter = decoded[5];
-
-
-            ushort lStickXMin = (ushort)(xAxisCenter - xAxisMinBelowCenter);
-            ushort lStickXMax = (ushort)(xAxisCenter + xAxisMaxAboveCenter);
-
-            ushort lStickYMin = (ushort)(yAxisCenter - yAxisMinBelowCenter);
-            ushort lStickYMax = (ushort)(yAxisCenter + yAxisMaxAboveCenter);
-
-            calibrationData.lStickCalibData = new StickCalibrationData()
-            {
-                xMin = lStickXMin,
-                xMax = lStickXMax,
-                yMin = lStickYMin,
-                yMax = lStickYMax,
-                xCenter = xAxisCenter,
-                yCenter = yAxisCenter
-            };
-        }
-
-        private unsafe void DecodeRightStickData(byte* rStickCal)
-        {
-            ushort[] decoded = DecodeStickData(rStickCal);
-
-            ushort xAxisCenter = decoded[0];
-            ushort yAxisCenter = decoded[1];
-            ushort xAxisMinBelowCenter = decoded[2];
-            ushort yAxisMinBelowCenter = decoded[3];
-            ushort xAxisMaxAboveCenter = decoded[4];
-            ushort yAxisMaxAboveCenter = decoded[5];
-
-            ushort rStickXMin = (ushort)(xAxisCenter - xAxisMinBelowCenter);
-            ushort rStickXMax = (ushort)(xAxisCenter + xAxisMaxAboveCenter);
-
-            ushort rStickYMin = (ushort)(yAxisCenter - yAxisMinBelowCenter);
-            ushort rStickYMax = (ushort)(yAxisCenter + yAxisMaxAboveCenter);
-
-            calibrationData.rStickCalibData = new StickCalibrationData()
-            {
-                xMin = rStickXMin,
-                xMax = rStickXMax,
-                yMin = rStickYMin,
-                yMax = rStickYMax,
-                xCenter = xAxisCenter,
-                yCenter = yAxisCenter
-            };
-        }
-
         public struct StickCalibrationData
         {
             public ushort xMin;
@@ -1155,6 +1080,58 @@ namespace UnityEngine.InputSystem.Switch
 
             public bool IsValid => xMin < xMax && yMin < yMax && xMax <= 0xFFF && yMax <= 0xFFF
                 && xMax - xMin > 0x400 && yMax - yMin > 0x400;
+
+            /// <summary>
+            /// Decode the 9 bytes a stick calibration takes in the SPI flash.
+            /// </summary>
+            internal static unsafe StickCalibrationData FromFlash(byte* stickCal, bool isRightStick)
+            {
+                // The bytes hold three pairs of 12 bit values, see
+                // https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/spi_flash_notes.md#analog-stick-factory-and-user-calibration
+                var pair0 = new Vector2Int((stickCal[1] << 8) & 0xF00 | stickCal[0], (stickCal[2] << 4) | (stickCal[1] >> 4));
+                var pair1 = new Vector2Int((stickCal[4] << 8) & 0xF00 | stickCal[3], (stickCal[5] << 4) | (stickCal[4] >> 4));
+                var pair2 = new Vector2Int((stickCal[7] << 8) & 0xF00 | stickCal[6], (stickCal[8] << 4) | (stickCal[7] >> 4));
+
+                // The two sticks store them in a different order
+                Vector2Int center = isRightStick ? pair0 : pair1;
+                Vector2Int minBelowCenter = isRightStick ? pair1 : pair2;
+                Vector2Int maxAboveCenter = isRightStick ? pair2 : pair0;
+
+                return new StickCalibrationData()
+                {
+                    xMin = (ushort)(center.x - minBelowCenter.x),
+                    xMax = (ushort)(center.x + maxAboveCenter.x),
+                    yMin = (ushort)(center.y - minBelowCenter.y),
+                    yMax = (ushort)(center.y + maxAboveCenter.y),
+                    xCenter = (ushort)center.x,
+                    yCenter = (ushort)center.y
+                };
+            }
+
+            /// <summary>
+            /// Map a raw 12 bit stick position to [-1, 1] on both axes.
+            /// </summary>
+            internal Vector2 Normalize(Vector2Int raw)
+            {
+                return new Vector2(
+                    NormalizeAxis(raw.x, xMin, xCenter, xMax),
+                    NormalizeAxis(raw.y, yMin, yCenter, yMax));
+            }
+
+            /// <summary>
+            /// Map a raw 12 bit axis value to [-1, 1] so that the calibrated center is exactly 0.
+            /// The center usually isn't halfway between min and max, so both halves are scaled separately.
+            /// </summary>
+            private static float NormalizeAxis(int raw, int min, int center, int max)
+            {
+                if (center <= min || center >= max)
+                    center = (min + max) / 2;
+
+                var value = raw >= center
+                    ? (float)(raw - center) / (max - center)
+                    : (float)(raw - center) / (center - min);
+                return Mathf.Clamp(value, -1f, 1f);
+            }
 
             public override string ToString()
             {

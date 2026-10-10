@@ -44,57 +44,12 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
         public Vector2Int RawLeftStick => new Vector2Int(leftStick[0] | ((leftStick[1] & 0xF) << 8), (leftStick[1] >> 4) | (leftStick[2] << 4));
         public Vector2Int RawRightStick => new Vector2Int(rightStick[0] | ((rightStick[1] & 0xF) << 8), (rightStick[1] >> 4) | (rightStick[2] << 4));
 
-        /// <summary>
-        /// Map a raw 12 bit axis value to [-1, 1] so that the calibrated center is exactly 0.
-        /// The center usually isn't halfway between min and max, so both halves are scaled separately.
-        /// </summary>
-        static float NormalizeStickAxis(int raw, int min, int center, int max)
-        {
-            if (center <= min || center >= max)
-                center = (min + max) / 2;
-
-            var value = raw >= center
-                ? (float)(raw - center) / (max - center)
-                : (float)(raw - center) / (center - min);
-            return Mathf.Clamp(value, -1f, 1f);
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public SwitchControllerVirtualInputState ToHIDInputReport(ref SwitchControllerHID.CalibrationData calibData, SpecificControllerTypeEnum controllerType)
+        public SwitchControllerVirtualInputState ToHIDInputReport(ref SwitchControllerHID.CalibrationData calibData, bool hasLeftStick, bool hasRightStick)
         {
-            var leftStickVec = Vector2.zero;
-            var rightStickVec = Vector2.zero;
-            if (controllerType == SpecificControllerTypeEnum.LeftJoyCon ||
-                controllerType == SpecificControllerTypeEnum.ProController)
-            {
-                // Left analog stick data
-                var lStickCalibData = calibData.lStickCalibData;
-                var l0 = leftStick[0];
-                var l1 = leftStick[1];
-                var l2 = leftStick[2];
-                var rawLeftStickHoriz = l0 | ((l1 & 0xF) << 8);
-                var rawLeftStickVert = (l1 >> 4) | (l2 << 4);
-
-                var leftStickX = NormalizeStickAxis(rawLeftStickHoriz, lStickCalibData.xMin, lStickCalibData.xCenter, lStickCalibData.xMax);
-                var leftStickY = NormalizeStickAxis(rawLeftStickVert, lStickCalibData.yMin, lStickCalibData.yCenter, lStickCalibData.yMax);
-                leftStickVec = new Vector2(leftStickX, leftStickY);
-            }
-
-            if (controllerType == SpecificControllerTypeEnum.RightJoyCon ||
-                controllerType == SpecificControllerTypeEnum.ProController)
-            {
-                // Right analog stick data
-                var rStickCalibData = calibData.rStickCalibData;
-                var r0 = rightStick[0];
-                var r1 = rightStick[1];
-                var r2 = rightStick[2];
-                var rawRightStickHoriz = r0 | ((r1 & 0xF) << 8);
-                var rawRightStickVert = (r1 >> 4) | (r2 << 4);
-
-                var rightStickX = NormalizeStickAxis(rawRightStickHoriz, rStickCalibData.xMin, rStickCalibData.xCenter, rStickCalibData.xMax);
-                var rightStickY = NormalizeStickAxis(rawRightStickVert, rStickCalibData.yMin, rStickCalibData.yCenter, rStickCalibData.yMax);
-                rightStickVec = new Vector2(rightStickX, rightStickY);
-            }
+            // A single Joy-Con only has one of the sticks, the other one stays centered
+            var leftStickVec = hasLeftStick ? calibData.lStickCalibData.Normalize(RawLeftStick) : Vector2.zero;
+            var rightStickVec = hasRightStick ? calibData.rStickCalibData.Normalize(RawRightStick) : Vector2.zero;
 
             Vector3 uncalibratedAccel = imuData0ms.UncalibratedAcceleration;
             Vector3 uncalibratedGyro = imuData0ms.UncalibratedGyro;

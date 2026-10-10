@@ -50,9 +50,6 @@ namespace SwitchControllerInput.Editor
             }
             else
             {
-                bool isLeft = controller.SpecificControllerType == SpecificControllerTypeEnum.LeftJoyCon;
-                bool isRight = controller.SpecificControllerType == SpecificControllerTypeEnum.RightJoyCon;
-
                 fold = EditorGUILayout.BeginFoldoutHeaderGroup(fold, prefix + " Controller");
 
                 if (fold)
@@ -92,9 +89,9 @@ namespace SwitchControllerInput.Editor
                     EditorGUILayout.Separator();
 
                     GUILayout.Label("Stick data: ", EditorStyles.boldLabel);
-                    if (!isRight)
+                    if (controller.HasLeftStick)
                         EditorGUILayout.LabelField("Left stick calibration: ", controller.calibrationData.lStickCalibData.ToString());
-                    if (!isLeft)
+                    if (controller.HasRightStick)
                         EditorGUILayout.LabelField("Right stick calibration: ", controller.calibrationData.rStickCalibData.ToString());
 
                     EditorGUILayout.Separator();
