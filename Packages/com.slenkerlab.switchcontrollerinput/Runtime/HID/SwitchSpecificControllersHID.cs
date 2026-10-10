@@ -1,4 +1,6 @@
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.Switch.LowLevel;
 

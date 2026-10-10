@@ -8,7 +8,6 @@ using UnityEngine.InputSystem.Utilities;
 // as a base here
 namespace UnityEngine.InputSystem.Switch.LowLevel
 {
-#if UNITY_EDITOR || UNITY_STANDALONE_WIN || UNITY_STANDALONE_OSX || UNITY_WSA
     [StructLayout(LayoutKind.Sequential)]
     internal unsafe struct SwitchControllerVirtualInputState : IInputStateTypeInfo
     {
@@ -118,5 +117,4 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
                 buttons &= (uint)~bit;
         }
     }
-#endif
 }
