@@ -15,13 +15,7 @@ namespace UnityEngine.InputSystem.Switch
         /// <param name="controller"></param>
         public void PlayOn(params SwitchControllerHID[] controllers)
         {
-            foreach (SwitchControllerHID controller in controllers)
-            {
-                if (controller == null)
-                    continue;
-
-                controller.Rumble(profile);
-            }
+            profile.PlayOn(controllers);
         }
     } 
 }

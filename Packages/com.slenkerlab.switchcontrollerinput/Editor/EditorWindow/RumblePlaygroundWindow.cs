@@ -34,39 +34,17 @@ namespace SwitchControllerInput.Editor
 
             if (fold)
             {
-                if (SwitchJoyConLHID.current == null && SwitchProControllerNewHID.current == null)
-                {
-                    GUILayout.BeginHorizontal("box");
-                    GUILayout.Label("Left controller", EditorStyles.boldLabel);
-                    GUILayout.Label("(disconnected)");
-                    GUILayout.EndHorizontal();
-                }
-                else 
-                {
-                    GUILayout.Label("Left controller: ", EditorStyles.boldLabel);
-                    rumbleProfile.highBandFrequencyLeft = EditorGUILayout.Slider("High band frequency: ", rumbleProfile.highBandFrequencyLeft, SwitchControllerRumbleProfile.HighBandFrequencyMin, SwitchControllerRumbleProfile.HighBandFrequencyMax);
-                    rumbleProfile.highBandAmplitudeLeft = EditorGUILayout.Slider("High band amplitude: ", rumbleProfile.highBandAmplitudeLeft, 0, 1);
-                    rumbleProfile.lowBandFrequencyLeft = EditorGUILayout.Slider("Low band frequency: ", rumbleProfile.lowBandFrequencyLeft, SwitchControllerRumbleProfile.LowBandFrequencyMin, SwitchControllerRumbleProfile.LowBandFrequencyMax);
-                    rumbleProfile.lowBandAmplitudeLeft = EditorGUILayout.Slider("Low band amplitude: ", rumbleProfile.lowBandAmplitudeLeft, 0, 1);
-                }
+                bool hasProController = SwitchProControllerNewHID.current != null;
+
+                RumbleSideGUI("Left controller", hasProController || SwitchJoyConLHID.current != null,
+                    ref rumbleProfile.highBandFrequencyLeft, ref rumbleProfile.highBandAmplitudeLeft,
+                    ref rumbleProfile.lowBandFrequencyLeft, ref rumbleProfile.lowBandAmplitudeLeft);
 
                 EditorGUILayout.Separator();
-                
-                if (SwitchJoyConRHID.current == null && SwitchProControllerNewHID.current == null)
-                {
-                    GUILayout.BeginHorizontal("box");
-                    GUILayout.Label("Right controller", EditorStyles.boldLabel);
-                    GUILayout.Label("(disconnected)");
-                    GUILayout.EndHorizontal();
-                }
-                else 
-                {
-                    GUILayout.Label("Right controller: ", EditorStyles.boldLabel);
-                    rumbleProfile.highBandFrequencyRight = EditorGUILayout.Slider("High band frequency: ", rumbleProfile.highBandFrequencyRight, SwitchControllerRumbleProfile.HighBandFrequencyMin, SwitchControllerRumbleProfile.HighBandFrequencyMax);
-                    rumbleProfile.highBandAmplitudeRight = EditorGUILayout.Slider("High band amplitude: ", rumbleProfile.highBandAmplitudeRight, 0, 1);
-                    rumbleProfile.lowBandFrequencyRight = EditorGUILayout.Slider("Low band frequency: ", rumbleProfile.lowBandFrequencyRight, SwitchControllerRumbleProfile.LowBandFrequencyMin, SwitchControllerRumbleProfile.LowBandFrequencyMax);
-                    rumbleProfile.lowBandAmplitudeRight = EditorGUILayout.Slider("Low band amplitude: ", rumbleProfile.lowBandAmplitudeRight, 0, 1);
-                }
+
+                RumbleSideGUI("Right controller", hasProController || SwitchJoyConRHID.current != null,
+                    ref rumbleProfile.highBandFrequencyRight, ref rumbleProfile.highBandAmplitudeRight,
+                    ref rumbleProfile.lowBandFrequencyRight, ref rumbleProfile.lowBandAmplitudeRight);
 
                 EditorGUILayout.Separator();
 
@@ -77,6 +55,28 @@ namespace SwitchControllerInput.Editor
             EditorGUILayout.EndFoldoutHeaderGroup();
 
             return fold;
+        }
+
+        /// <summary>
+        /// Sliders for the rumble of one side, or a notice if no controller is connected for it.
+        /// </summary>
+        private static void RumbleSideGUI(string title, bool connected,
+            ref float highBandFrequency, ref float highBandAmplitude, ref float lowBandFrequency, ref float lowBandAmplitude)
+        {
+            if (!connected)
+            {
+                GUILayout.BeginHorizontal("box");
+                GUILayout.Label(title, EditorStyles.boldLabel);
+                GUILayout.Label("(disconnected)");
+                GUILayout.EndHorizontal();
+                return;
+            }
+
+            GUILayout.Label(title + ": ", EditorStyles.boldLabel);
+            highBandFrequency = EditorGUILayout.Slider("High band frequency: ", highBandFrequency, SwitchControllerRumbleProfile.HighBandFrequencyMin, SwitchControllerRumbleProfile.HighBandFrequencyMax);
+            highBandAmplitude = EditorGUILayout.Slider("High band amplitude: ", highBandAmplitude, 0, 1);
+            lowBandFrequency = EditorGUILayout.Slider("Low band frequency: ", lowBandFrequency, SwitchControllerRumbleProfile.LowBandFrequencyMin, SwitchControllerRumbleProfile.LowBandFrequencyMax);
+            lowBandAmplitude = EditorGUILayout.Slider("Low band amplitude: ", lowBandAmplitude, 0, 1);
         }
 
         /// <summary>

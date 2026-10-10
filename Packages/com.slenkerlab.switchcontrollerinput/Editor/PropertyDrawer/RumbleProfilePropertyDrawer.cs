@@ -10,78 +10,46 @@ namespace SwitchControllerInput.Editor
     [CustomPropertyDrawer(typeof(SwitchControllerRumbleProfile))]
     public class RumbleProfilePropertyDrawer : PropertyDrawer
     {
-        // Ranges for high and low band frequencies, and amplitudes
-        private const float highBandFrequencyMin = SwitchControllerRumbleProfile.HighBandFrequencyMin;
-        private const float highBandFrequencyMax = SwitchControllerRumbleProfile.HighBandFrequencyMax;
-        private const float lowBandFrequencyMin = SwitchControllerRumbleProfile.LowBandFrequencyMin;
-        private const float lowBandFrequencyMax = SwitchControllerRumbleProfile.LowBandFrequencyMax;
+        // The profile has the same four fields for each side, named with the side as suffix
+        private static readonly string[] sides = { "Left", "Right" };
+
         private const float amplitudeMin = 0f;
         private const float amplitudeMax = 1f;
-         
+
+        private const float labelHeight = 30f;
+        private const float buttonHeight = 30f;
+        private const float spacing = 10f;
 
         /// <inheritdoc/>
         public override void OnGUI(Rect position, SerializedProperty property, GUIContent label)
         {
             EditorGUI.BeginProperty(position, label, property);
 
-            // Rect and Serialized properties for the left hand values
-            Rect leftHandLabelRect = new Rect(position.x - 5, position.y, position.width, 30);
+            float y = position.y;
+            foreach (string side in sides)
+            {
+                EditorGUI.LabelField(new Rect(position.x - 5, y, position.width, labelHeight), side + " hand: ", EditorStyles.boldLabel);
+                y += labelHeight;
 
-            SerializedProperty leftHighBandFrequencyProperty = property.FindPropertyRelative("highBandFrequencyLeft");
-            Rect leftHighBandFrequencyRect = new Rect(position.x, leftHandLabelRect.yMax, position.width, EditorGUI.GetPropertyHeight(leftHighBandFrequencyProperty));
-            
-            SerializedProperty leftHighBandAmplitudeProperty = property.FindPropertyRelative("highBandAmplitudeLeft");
-            Rect leftHighBandAmplitudeRect = new Rect(position.x, leftHighBandFrequencyRect.yMax, position.width, EditorGUI.GetPropertyHeight(leftHighBandAmplitudeProperty));
-
-            SerializedProperty leftLowBandFrequencyProperty = property.FindPropertyRelative("lowBandFrequencyLeft");
-            Rect leftLowBandFrequencyRect = new Rect(position.x, leftHighBandAmplitudeRect.yMax, position.width, EditorGUI.GetPropertyHeight(leftLowBandFrequencyProperty));
-
-            SerializedProperty leftLowBandAmplitudeProperty = property.FindPropertyRelative("lowBandAmplitudeLeft");
-            Rect leftLowBandAmplitudeRect = new Rect(position.x, leftLowBandFrequencyRect.yMax, position.width, EditorGUI.GetPropertyHeight(leftLowBandAmplitudeProperty));
-
-            // Rect and Serialized properties for the right hand values
-            Rect rightHandLabelRect = new Rect(position.x - 5, leftLowBandAmplitudeRect.yMax + 10, position.width, 30);
-
-            SerializedProperty rightHighBandFrequencyProperty = property.FindPropertyRelative("highBandFrequencyRight");
-            Rect rightHighBandFrequencyRect = new Rect(position.x, rightHandLabelRect.yMax, position.width, EditorGUI.GetPropertyHeight(rightHighBandFrequencyProperty));
-
-            SerializedProperty rightHighBandAmplitudeProperty = property.FindPropertyRelative("highBandAmplitudeRight");
-            Rect rightHighBandAmplitudeRect = new Rect(position.x, rightHighBandFrequencyRect.yMax, position.width, EditorGUI.GetPropertyHeight(rightHighBandAmplitudeProperty));
-
-            SerializedProperty rightLowBandFrequencyProperty = property.FindPropertyRelative("lowBandFrequencyRight");
-            Rect rightLowBandFrequencyRect = new Rect(position.x, rightHighBandAmplitudeRect.yMax, position.width, EditorGUI.GetPropertyHeight(rightLowBandFrequencyProperty));
-
-            SerializedProperty rightLowBandAmplitudeProperty = property.FindPropertyRelative("lowBandAmplitudeRight");
-            Rect rightLowBandAmplitudeRect = new Rect(position.x, rightLowBandFrequencyRect.yMax, position.width, EditorGUI.GetPropertyHeight(rightLowBandAmplitudeProperty));
-
-            // Test button to play the data
-            Rect rumbleProfileTestRect = new Rect(position.x - 5, rightLowBandAmplitudeRect.yMax + 10, position.width, 30);
-
-            // GUI elements 
-            EditorGUI.LabelField(leftHandLabelRect, "Left hand: ", EditorStyles.boldLabel);
-            EditorGUI.Slider(leftHighBandFrequencyRect, leftHighBandFrequencyProperty, highBandFrequencyMin, highBandFrequencyMax, "High-band frequency");
-            EditorGUI.Slider(leftHighBandAmplitudeRect, leftHighBandAmplitudeProperty, amplitudeMin, amplitudeMax, "High-band amplitude");
-            EditorGUI.Slider(leftLowBandFrequencyRect, leftLowBandFrequencyProperty, lowBandFrequencyMin, lowBandFrequencyMax, "Low-band frequency");
-            EditorGUI.Slider(leftLowBandAmplitudeRect, leftLowBandAmplitudeProperty, amplitudeMin, amplitudeMax, "Low-band amplitude");
-            EditorGUI.LabelField(rightHandLabelRect, "Right hand: ", EditorStyles.boldLabel);
-            EditorGUI.Slider(rightHighBandFrequencyRect, rightHighBandFrequencyProperty, highBandFrequencyMin, highBandFrequencyMax, "High-band frequency");
-            EditorGUI.Slider(rightHighBandAmplitudeRect, rightHighBandAmplitudeProperty, amplitudeMin, amplitudeMax, "High-band amplitude");
-            EditorGUI.Slider(rightLowBandFrequencyRect, rightLowBandFrequencyProperty, lowBandFrequencyMin, lowBandFrequencyMax, "Low-band frequency");
-            EditorGUI.Slider(rightLowBandAmplitudeRect, rightLowBandAmplitudeProperty, amplitudeMin, amplitudeMax, "Low-band amplitude");
+                y = SliderGUI(position, y, property.FindPropertyRelative("highBandFrequency" + side), SwitchControllerRumbleProfile.HighBandFrequencyMin, SwitchControllerRumbleProfile.HighBandFrequencyMax, "High-band frequency");
+                y = SliderGUI(position, y, property.FindPropertyRelative("highBandAmplitude" + side), amplitudeMin, amplitudeMax, "High-band amplitude");
+                y = SliderGUI(position, y, property.FindPropertyRelative("lowBandFrequency" + side), SwitchControllerRumbleProfile.LowBandFrequencyMin, SwitchControllerRumbleProfile.LowBandFrequencyMax, "Low-band frequency");
+                y = SliderGUI(position, y, property.FindPropertyRelative("lowBandAmplitude" + side), amplitudeMin, amplitudeMax, "Low-band amplitude");
+                y += spacing;
+            }
 
             // Play button to test the rumble profile
-            bool playingRumbleProfile = GUI.Button(rumbleProfileTestRect, "Play");
-            if (playingRumbleProfile)
+            if (GUI.Button(new Rect(position.x - 5, y, position.width, buttonHeight), "Play"))
             {
                 SwitchControllerRumbleProfile profile = SwitchControllerRumbleProfile.CreateEmpty();
-                profile.highBandFrequencyLeft = leftHighBandFrequencyProperty.floatValue;
-                profile.highBandAmplitudeLeft = leftHighBandAmplitudeProperty.floatValue;
-                profile.lowBandFrequencyLeft = leftLowBandFrequencyProperty.floatValue;
-                profile.lowBandAmplitudeLeft = leftLowBandAmplitudeProperty.floatValue;
-                profile.highBandFrequencyRight = rightHighBandFrequencyProperty.floatValue;
-                profile.highBandAmplitudeRight = rightHighBandAmplitudeProperty.floatValue;
-                profile.lowBandFrequencyRight = rightLowBandFrequencyProperty.floatValue;
-                profile.lowBandAmplitudeRight = rightLowBandAmplitudeProperty.floatValue;
+                profile.highBandFrequencyLeft = property.FindPropertyRelative("highBandFrequencyLeft").floatValue;
+                profile.highBandAmplitudeLeft = property.FindPropertyRelative("highBandAmplitudeLeft").floatValue;
+                profile.lowBandFrequencyLeft = property.FindPropertyRelative("lowBandFrequencyLeft").floatValue;
+                profile.lowBandAmplitudeLeft = property.FindPropertyRelative("lowBandAmplitudeLeft").floatValue;
+                profile.highBandFrequencyRight = property.FindPropertyRelative("highBandFrequencyRight").floatValue;
+                profile.highBandAmplitudeRight = property.FindPropertyRelative("highBandAmplitudeRight").floatValue;
+                profile.lowBandFrequencyRight = property.FindPropertyRelative("lowBandFrequencyRight").floatValue;
+                profile.lowBandAmplitudeRight = property.FindPropertyRelative("lowBandAmplitudeRight").floatValue;
 
                 profile.PlayOn(SwitchProControllerNewHID.current, SwitchJoyConLHID.current, SwitchJoyConRHID.current);
             }
@@ -89,23 +57,28 @@ namespace SwitchControllerInput.Editor
             EditorGUI.EndProperty();
         }
 
+        /// <summary>
+        /// Draw the slider of one field at the given height, and return the height the next element starts at.
+        /// </summary>
+        private static float SliderGUI(Rect position, float y, SerializedProperty property, float min, float max, string label)
+        {
+            Rect rect = new Rect(position.x, y, position.width, EditorGUI.GetPropertyHeight(property));
+            EditorGUI.Slider(rect, property, min, max, label);
+            return rect.yMax;
+        }
+
         /// <inheritdoc/>
         public override float GetPropertyHeight(SerializedProperty property, GUIContent label)
         {
-            float height = 
-                30f +                                                                                   // Left hand label
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("highBandFrequencyLeft")) + 
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("highBandAmplitudeLeft")) +
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("lowBandFrequencyLeft")) +
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("lowBandAmplitudeLeft")) +
-                10f +                                                                                   // Spacing
-                30f +                                                                                   // Right hand label
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("highBandFrequencyRight")) +
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("highBandAmplitudeRight")) +
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("lowBandFrequencyRight")) +
-                EditorGUI.GetPropertyHeight(property.FindPropertyRelative("lowBandAmplitudeRight")) +
-                10f +                                                                                   // Spacing
-                30f;                                                                                    // Test button
+            float height = buttonHeight;
+            foreach (string side in sides)
+            {
+                height += labelHeight + spacing;
+                height += EditorGUI.GetPropertyHeight(property.FindPropertyRelative("highBandFrequency" + side));
+                height += EditorGUI.GetPropertyHeight(property.FindPropertyRelative("highBandAmplitude" + side));
+                height += EditorGUI.GetPropertyHeight(property.FindPropertyRelative("lowBandFrequency" + side));
+                height += EditorGUI.GetPropertyHeight(property.FindPropertyRelative("lowBandAmplitude" + side));
+            }
 
             return height;
         }
