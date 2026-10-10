@@ -132,7 +132,6 @@ namespace SwitchControllerInput.Editor
                     {
                         if (EditorUtility.DisplayDialog("Write User Calibration?", "This will permanently write the current calibration data to the controller's user memory. Are you sure?", "Write", "Cancel"))
                         {
-                            // Start calibration after a 2-second delay to allow the user to place the controller.
                             controller.StartIMUCalibration(5.0f);
                         }
                     }

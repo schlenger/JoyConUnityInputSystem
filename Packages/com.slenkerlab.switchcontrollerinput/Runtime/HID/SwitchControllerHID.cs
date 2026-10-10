@@ -517,6 +517,16 @@ namespace UnityEngine.InputSystem.Switch
         {
             Debug.Log($"Calibration finished. Average Accel: {averageAccel}, Average Gyro: {averageGyro}. Writing to controller...");
 
+            // The sensitivities are written back unchanged, so they have to be the ones read from the controller.
+            // Writing the zeroes we start with would leave the controller with an unusable user calibration.
+            if (!calibrationData.imuCalibData.HasSensitivity)
+            {
+                Debug.LogError("IMU calibration was not written: the current calibration has to be read from the controller first");
+                CurrentCalibrationState = CalibrationState.None;
+                CalibrationProgress = 0f;
+                return;
+            }
+
             // Create a 26-byte (0x1A) payload for user calibration data.
             byte[] payload = new byte[0x1A];
 
@@ -539,11 +549,11 @@ namespace UnityEngine.InputSystem.Switch
             // For the gyroscope, we zero out all axes as it should be perfectly still.
             IMUCalibrationData newUserCalib = new IMUCalibrationData
             {
-                accelBase = new Vector3UInt16 { x = (ushort)accelOffset.x, y = (ushort)accelOffset.y, z = (ushort)accelOffset.z },
+                accelBase = ToRawVector(accelOffset),
                 // keep factory coefficients unchanged
                 accelSensitivity = calibrationData.imuCalibData.accelSensitivity,
 
-                gyroBase = new Vector3UInt16 { x = (ushort)averageGyro.x, y = (ushort)averageGyro.y, z = (ushort)averageGyro.z },
+                gyroBase = ToRawVector(averageGyro),
                 gyroSensitivity = calibrationData.imuCalibData.gyroSensitivity,
                 // keep factory coefficients unchanged
             };
@@ -580,6 +590,20 @@ namespace UnityEngine.InputSystem.Switch
 
             CurrentCalibrationState = CalibrationState.Done;
             CalibrationProgress = 1f;
+        }
+
+        /// <summary>
+        /// The controller stores the sensor values as signed 16 bit integers. A negative float cannot be
+        /// cast to ushort directly, the result of that depends on the platform.
+        /// </summary>
+        private static Vector3UInt16 ToRawVector(Vector3 value)
+        {
+            return new Vector3UInt16
+            {
+                x = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(value.x), short.MinValue, short.MaxValue),
+                y = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(value.y), short.MinValue, short.MaxValue),
+                z = (ushort)(short)Mathf.Clamp(Mathf.RoundToInt(value.z), short.MinValue, short.MaxValue)
+            };
         }
 
         /// <summary>
@@ -1009,6 +1033,11 @@ namespace UnityEngine.InputSystem.Switch
             
             public Vector3 accelCoeff;
             public Vector3 gyroCoeff;
+
+            /// <summary>False as long as no calibration has been read from the controller.</summary>
+            public bool HasSensitivity =>
+                accelSensitivity.x != 0 && accelSensitivity.y != 0 && accelSensitivity.z != 0 &&
+                gyroSensitivity.x != 0 && gyroSensitivity.y != 0 && gyroSensitivity.z != 0;
 
             public unsafe static IMUCalibrationData FromResponse(ushort* response)
             {
