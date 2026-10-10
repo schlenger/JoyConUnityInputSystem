@@ -120,6 +120,9 @@ namespace UnityEngine.InputSystem.Switch
             DeviceInfo,
             StickCalibration,
             SerialNumber,
+            FactoryIMUCalibration,
+            UserIMUCalibration,
+            EnableIMU,
             Done
         }
 
@@ -128,10 +131,18 @@ namespace UnityEngine.InputSystem.Switch
         private bool m_deviceInfoLoaded = false;
         private bool m_colorsLoaded = false;
         private bool m_serialNumberLoaded = false;
+        private bool m_factoryIMUCalibrationLoaded = false;
+        private bool m_userIMUCalibrationLoaded = false;
+        private bool m_imuEnabled = false;
 
-        // The step that was requested last and when, to request it again in case of timeout
+        // The step that was requested last, when and how often, to request it again in case of timeout
         private SetupStep m_setupStep;
         private double m_timeOfLastRequest;
+        private int m_setupAttempts;
+
+        // Not every controller has an IMU or answers these requests (third party ones in particular),
+        // so the IMU steps are given up on after a few attempts.
+        private const int maxIMUSetupAttempts = 3;
         private const double timeout = 1.0;
         #endregion
 
@@ -297,6 +308,12 @@ namespace UnityEngine.InputSystem.Switch
                 return SetupStep.StickCalibration;
             if (!m_serialNumberLoaded)
                 return SetupStep.SerialNumber;
+            if (!m_factoryIMUCalibrationLoaded)
+                return SetupStep.FactoryIMUCalibration;
+            if (!m_userIMUCalibrationLoaded)
+                return SetupStep.UserIMUCalibration;
+            if (!m_imuEnabled)
+                return SetupStep.EnableIMU;
             return SetupStep.Done;
         }
 
@@ -312,11 +329,25 @@ namespace UnityEngine.InputSystem.Switch
 
             double currentTime = InputRuntime.s_Instance.currentTime;
 
+            if (step != m_setupStep)
+            {
+                m_setupStep = step;
+                m_setupAttempts = 0;
+            }
             // Are we waiting for a response?
-            if (step == m_setupStep && currentTime <= m_timeOfLastRequest + timeout)
+            else if (currentTime <= m_timeOfLastRequest + timeout)
                 return;
 
-            m_setupStep = step;
+            if (step >= SetupStep.FactoryIMUCalibration && m_setupAttempts >= maxIMUSetupAttempts)
+            {
+                Debug.LogWarning($"{displayName}: no answer from the controller for {step}, giving up on the IMU setup");
+                m_factoryIMUCalibrationLoaded = true;
+                m_userIMUCalibrationLoaded = true;
+                m_imuEnabled = true;
+                return;
+            }
+
+            m_setupAttempts++;
             m_timeOfLastRequest = currentTime;
 
             switch (step)
@@ -332,6 +363,16 @@ namespace UnityEngine.InputSystem.Switch
                     break;
                 case SetupStep.SerialNumber:
                     ReadSerialNumber();
+                    break;
+                // The user calibration is read after the factory one, to replace it if there is one
+                case SetupStep.FactoryIMUCalibration:
+                    ReadFactoryIMUCalibrationData();
+                    break;
+                case SetupStep.UserIMUCalibration:
+                    ReadUserIMUCalibrationData();
+                    break;
+                case SetupStep.EnableIMU:
+                    SetIMUEnabled(true);
                     break;
             }
         }
@@ -438,7 +479,7 @@ namespace UnityEngine.InputSystem.Switch
 
             // The sensitivities are written back unchanged, so they have to be the ones read from the controller.
             // Writing the zeroes we start with would leave the controller with an unusable user calibration.
-            if (!calibrationData.imuCalibData.HasSensitivity)
+            if (!calibrationData.imuCalibData.IsValid)
             {
                 Debug.LogError("IMU calibration was not written: the current calibration has to be read from the controller first");
                 CurrentCalibrationState = CalibrationState.None;
@@ -746,6 +787,9 @@ namespace UnityEngine.InputSystem.Switch
                     case SubcommandIDEnum.SPIFlashRead:
                         HandleFlashRead(response.replyData);
                         break;
+                    case SubcommandIDEnum.EnableDisableIMU:
+                        m_imuEnabled = true;
+                        break;
                     default:
                         break;
                 }
@@ -838,6 +882,7 @@ namespace UnityEngine.InputSystem.Switch
 
                 case SPIFlashReadAddressEnum.FactoryIMUCalibration:
                     DecodeIMUCalibrationData((ushort*)response);
+                    m_factoryIMUCalibrationLoaded = true;
                     break;
 
                 case SPIFlashReadAddressEnum.FactoryStickCalibration:
@@ -853,7 +898,8 @@ namespace UnityEngine.InputSystem.Switch
                     if (response[0] == 0xB2 && response[1] == 0xA1)
                         DecodeIMUCalibrationData((ushort*)(response + 2));
                     else
-                        Debug.LogWarning("User IMU calibration data does not contain the expected magic number. don't decode.");
+                        LogVerbose("No user IMU calibration on the controller, keeping the factory one");
+                    m_userIMUCalibrationLoaded = true;
                     break;
 
                 default:
@@ -887,10 +933,18 @@ namespace UnityEngine.InputSystem.Switch
             public Vector3 accelCoeff;
             public Vector3 gyroCoeff;
 
-            /// <summary>False as long as no calibration has been read from the controller.</summary>
-            public bool HasSensitivity =>
-                accelSensitivity.x != 0 && accelSensitivity.y != 0 && accelSensitivity.z != 0 &&
-                gyroSensitivity.x != 0 && gyroSensitivity.y != 0 && gyroSensitivity.z != 0;
+            /// <summary>
+            /// False as long as no calibration has been read from the controller, or if what was read is unusable.
+            /// </summary>
+            public bool IsValid =>
+                IsValidAxis(accelBase.x, accelSensitivity.x) && IsValidAxis(accelBase.y, accelSensitivity.y) && IsValidAxis(accelBase.z, accelSensitivity.z) &&
+                IsValidAxis(gyroBase.x, gyroSensitivity.x) && IsValidAxis(gyroBase.y, gyroSensitivity.y) && IsValidAxis(gyroBase.z, gyroSensitivity.z);
+
+            // The coefficients divide by the difference between the two, and blank flash reads as 0xFFFF
+            private static bool IsValidAxis(ushort axisBase, ushort axisSensitivity)
+            {
+                return axisSensitivity != 0 && axisSensitivity != 0xFFFF && axisSensitivity != axisBase;
+            }
 
             public unsafe static IMUCalibrationData FromResponse(ushort* response)
             {
@@ -959,6 +1013,11 @@ namespace UnityEngine.InputSystem.Switch
         private unsafe void DecodeIMUCalibrationData(ushort* response)
         {
             var newCalibData = IMUCalibrationData.FromResponse(response);
+            if (!newCalibData.IsValid)
+            {
+                Debug.LogWarning($"{displayName}: ignoring unusable IMU calibration data ({newCalibData})");
+                return;
+            }
 
             // Pre-calculate the coefficients once when calibration data is loaded.
             // This avoids redundant calculations in every input report.
