@@ -1,19 +1,30 @@
 # Nintendo Switch Controllers for Unity Input System
 
->[!WARNING]
-> The original JoyConUnityInputSystem repository owned by me ([Meorge](https://github.com/Meorge)) is no longer being maintained, and is in read-only mode as a result.
-> You may want to consider these options:
->
-> - I have an engine-agnostic C++ library for interfacing with Switch controllers called [SwitchKit](https://github.com/Meorge/SwitchKit), as well as [Godot bindings for it](https://github.com/Meorge/SwitchKit-Godot).
-> SwitchKit has more functionality than JoyConUnityInputSystem (as I have left it), including the ability to read the Ring-Con accessory's flex.
-> No Unity bindings of SwitchKit have been created as of my writing this, but if anyone would like to have a go at it then please do so (and let me know so I can add a link to the SwitchKit repository)!
-> - Some people have forked JoyConUnityInputSystem and made improvements to it; you can find them on the [Forks page](https://github.com/Meorge/JoyConUnityInputSystem/forks).
+> [!NOTE]
+> This is a fork of [Meorge/JoyConUnityInputSystem](https://github.com/Meorge/JoyConUnityInputSystem), which is no longer maintained and has been set to read-only by its author.
+> This fork builds on it with fixes for stick drift, third party controllers and newer versions of the Input System package, see [Changes in this fork](#changes-in-this-fork).
 
 This is a prototype for Nintendo Switch controller Bluetooth support for the new Unity Input System, brought to compatibility with the latest versions of Unity and its InputSystem package.
 
 ## Installation
 
-Using the Unity Package Manager, add the package from the following git URL: <https://github.com/Meorge/JoyConUnityInputSystem.git?path=/Packages/com.canopteks.switchcontrollerinput>.
+Using the Unity Package Manager, add the package from the following git URL: <https://github.com/schlenger/JoyConUnityInputSystem.git?path=/Packages/com.canopteks.switchcontrollerinput>.
+
+The package requires Unity 6 (6000.0) or newer and version 1.20.0 or newer of the Input System package.
+
+## Changes in this fork
+
+- **Stick calibration**
+  - Stick axes are normalized around the calibrated center instead of the middle of the min/max range, so a resting stick reads exactly 0.
+  - When a controller connects, its sticks are assumed to be untouched. If they rest outside of the calibrated center, the rest position is used as the center instead.
+  - `SwitchControllerHID.RecenterSticks()` uses the current stick position as the new center, e.g. for a "recalibrate" option in your game.
+  - Unusable calibration data (blank flash, as seen on third party controllers) is ignored in favor of the default values.
+  - The uncalibrated 12 bit stick values are available as `SwitchControllerHID.RawLeftStick` and `RawRightStick`.
+- **Third party controllers**
+  - The controller type is taken from the matched layout (i.e. the product ID) if the controller reports a different one about itself.
+  - Controllers that only return the body and button colors are supported.
+- **Pro Controller**: matched by vendor and product ID regardless of the product name, which differs per platform (e.g. "Pro Controller" on macOS). This also makes the layout take precedence over the Input System's built-in `SwitchProControllerHID`.
+- **Input System 1.20**: fixed the layouts being registered before the Input System is initialized in the editor.
 
 ## Notes
 
@@ -30,6 +41,7 @@ Using the Unity Package Manager, add the package from the following git URL: <ht
 - Joy-Con (L)
 - Joy-Con (R)
 - Pro Controller
+- Third party controllers that identify as one of the above
 
 ## Supported features
 
@@ -45,7 +57,7 @@ General data about the connected Switch controllers can be found in the menu `Wi
 - Capture and HOME buttons
 - Minus and Plus buttons
 - Left and right analog sticks and stick presses
-  - **Note**: Although they use the factory configuration/calibration info, they still seem to have significant drift
+  - The factory calibration is used, and corrected on connect if the stick rests off center. Leave the sticks untouched while connecting, or call `SwitchControllerHID.RecenterSticks()` afterwards.
 
 ### HD Rumble: WIP
 
@@ -95,6 +107,7 @@ However, quitting the application doesn't reset the LEDs. If you want them to ge
 
 ## Credits
 
+- The original [JoyConUnityInputSystem](https://github.com/Meorge/JoyConUnityInputSystem) by [Meorge](https://github.com/Meorge) and its contributors, which this repository is a fork of
 - The amazing [Nintendo Switch Reverse Engineering](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering) repository
   - Format for parsing controller data and sending subcommands is from [bluetooth_hid_notes.md](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_notes.md) and [bluetooth_hid_subcommands_notes.md](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/bluetooth_hid_subcommands_notes.md)
   - HD Rumble encoding algorithm is from [rumble_data_table.md](https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering/blob/master/rumble_data_table.md)

@@ -42,6 +42,24 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
         // [FieldOffset(49)] public fixed byte nfcIRDataInputReport[313];
 
 
+        public Vector2Int RawLeftStick => new Vector2Int(leftStick[0] | ((leftStick[1] & 0xF) << 8), (leftStick[1] >> 4) | (leftStick[2] << 4));
+        public Vector2Int RawRightStick => new Vector2Int(rightStick[0] | ((rightStick[1] & 0xF) << 8), (rightStick[1] >> 4) | (rightStick[2] << 4));
+
+        /// <summary>
+        /// Map a raw 12 bit axis value to [-1, 1] so that the calibrated center is exactly 0.
+        /// The center usually isn't halfway between min and max, so both halves are scaled separately.
+        /// </summary>
+        static float NormalizeStickAxis(int raw, int min, int center, int max)
+        {
+            if (center <= min || center >= max)
+                center = (min + max) / 2;
+
+            var value = raw >= center
+                ? (float)(raw - center) / (max - center)
+                : (float)(raw - center) / (center - min);
+            return Mathf.Clamp(value, -1f, 1f);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public SwitchControllerVirtualInputState ToHIDInputReport(ref SwitchControllerHID.CalibrationData calibData, SpecificControllerTypeEnum controllerType)
         {
@@ -58,8 +76,8 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
                 var rawLeftStickHoriz = l0 | ((l1 & 0xF) << 8);
                 var rawLeftStickVert = (l1 >> 4) | (l2 << 4);
 
-                var leftStickX = (Mathf.InverseLerp(lStickCalibData.xMin, lStickCalibData.xMax, rawLeftStickHoriz) * 2) - 1;
-                var leftStickY = (Mathf.InverseLerp(lStickCalibData.yMin, lStickCalibData.yMax, rawLeftStickVert) * 2) - 1;
+                var leftStickX = NormalizeStickAxis(rawLeftStickHoriz, lStickCalibData.xMin, lStickCalibData.xCenter, lStickCalibData.xMax);
+                var leftStickY = NormalizeStickAxis(rawLeftStickVert, lStickCalibData.yMin, lStickCalibData.yCenter, lStickCalibData.yMax);
                 leftStickVec = new Vector2(leftStickX, leftStickY);
 
                 // Debug.Log($"Left stick data: Raw: ({rawLeftStickHoriz:X3};{rawLeftStickVert:X3}) Calibration data: Center=({lStickCalibData.xCenter:X3},{lStickCalibData.yCenter:X3}); X=[{lStickCalibData.xMin:X3} - {lStickCalibData.xMax:X3}]; Y=[{lStickCalibData.yMin:X3} - {lStickCalibData.yMax:X3}]   Final data: {leftStickVec}");
@@ -76,8 +94,8 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
                 var rawRightStickHoriz = r0 | ((r1 & 0xF) << 8);
                 var rawRightStickVert = (r1 >> 4) | (r2 << 4);
 
-                var rightStickX = (Mathf.InverseLerp(rStickCalibData.xMin, rStickCalibData.xMax, rawRightStickHoriz) * 2) - 1;
-                var rightStickY = (Mathf.InverseLerp(rStickCalibData.yMin, rStickCalibData.yMax, rawRightStickVert) * 2) - 1;
+                var rightStickX = NormalizeStickAxis(rawRightStickHoriz, rStickCalibData.xMin, rStickCalibData.xCenter, rStickCalibData.xMax);
+                var rightStickY = NormalizeStickAxis(rawRightStickVert, rStickCalibData.yMin, rStickCalibData.yCenter, rStickCalibData.yMax);
                 rightStickVec = new Vector2(rightStickX, rightStickY);
 
                 // Debug.Log($"Right stick data: Raw: ({rawRightStickHoriz:X3};{rawRightStickVert:X3}) Calibration data: Center=({rStickCalibData.xCenter:X3},{rStickCalibData.yCenter:X3}); X=[{rStickCalibData.xMin:X3} - {rStickCalibData.xMax:X3}]; Y=[{rStickCalibData.yMin:X3} - {rStickCalibData.yMax:X3}]   Final data: {rightStickVec}");

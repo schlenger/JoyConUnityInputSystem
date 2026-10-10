@@ -86,6 +86,10 @@ namespace UnityEngine.InputSystem.Switch
         };
         #endregion
 
+        /// <summary>Latest uncalibrated 12 bit stick positions as sent by the controller.</summary>
+        public Vector2Int RawLeftStick { get; private set; }
+        public Vector2Int RawRightStick { get; private set; }
+
         private Vector3 m_currentOrientation = new Vector3();
         private double m_lastUpdateTime;
         private IMUData m_lastIMUData;
@@ -101,6 +105,11 @@ namespace UnityEngine.InputSystem.Switch
         public bool BatteryIsCharging { get; protected set; } = false;
         public ControllerTypeEnum ControllerType { get; protected set; } = ControllerTypeEnum.JoyCon;
         public SpecificControllerTypeEnum SpecificControllerType { get; protected set; } = SpecificControllerTypeEnum.Unknown;
+
+        /// <summary>
+        /// The controller type implied by the layout the device was matched to. Unknown if the layout is generic.
+        /// </summary>
+        protected virtual SpecificControllerTypeEnum LayoutControllerType => SpecificControllerTypeEnum.Unknown;
         public bool IsPoweredBySwitchOrUSB { get; protected set; } = false;
         public string FirmwareVersion { get; protected set; } = "X.X";
         public string MACAddress { get; protected set; } = "XX.XX.XX.XX.XX.XX";
@@ -111,6 +120,7 @@ namespace UnityEngine.InputSystem.Switch
         // Are the different device informations loaded ?
         private bool m_IMUConfigDataLoaded = false;
         private bool m_stickConfigDataLoaded = false;
+        private bool m_stickRestChecked = false;
         private bool m_deviceInfoLoaded = false;
         private bool m_colorsLoaded = false;
         private bool m_serialNumberLoaded = false;
@@ -152,6 +162,19 @@ namespace UnityEngine.InputSystem.Switch
         public static SwitchControllerHID current { get; private set; }
 
         static SwitchControllerHID() { }
+
+        /// <summary>
+        /// Since InputSystem 1.20 the editor-side manager is created by InputSystemEditorInitializer's
+        /// [InitializeOnLoad] constructor, which may run after ours. Force it to run first so that
+        /// RegisterLayout does not hit a null manager.
+        /// </summary>
+        protected static void EnsureInputSystemInitialized()
+        {
+#if UNITY_EDITOR
+            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(
+                typeof(UnityEngine.InputSystem.Editor.InputSystemEditorInitializer).TypeHandle);
+#endif
+        }
 
         [RuntimeInitializeOnLoadMethod]
         static void Init() { }
@@ -215,6 +238,9 @@ namespace UnityEngine.InputSystem.Switch
         protected override void OnAdded()
         {
             base.OnAdded();
+
+            if (LayoutControllerType != SpecificControllerTypeEnum.Unknown)
+                SpecificControllerType = LayoutControllerType;
 
             // Set the controller to 60Hz reports mode instead of button events mode
             // TODO: Check if it's the one that fails sometimes and if so, try to put it on NextUpdate with a timeout like the others
@@ -663,6 +689,56 @@ namespace UnityEngine.InputSystem.Switch
             return false;
         }
 
+        /// <summary>
+        /// The calibration stored on the controller (third party ones in particular) does not always match
+        /// where the stick actually rests, which makes the stick drift. The stick is assumed to be untouched
+        /// right after connecting, so if it reads outside of the deadzone then, its rest position becomes the center.
+        /// </summary>
+        private void RecenterStickIfOffCenter(ref StickCalibrationData calib, Vector2Int rest, string stickName)
+        {
+            const float tolerance = 0.1f;
+
+            if (calib.xCenter <= calib.xMin || calib.xCenter >= calib.xMax)
+                calib.xCenter = (ushort)((calib.xMin + calib.xMax) / 2);
+            if (calib.yCenter <= calib.yMin || calib.yCenter >= calib.yMax)
+                calib.yCenter = (ushort)((calib.yMin + calib.yMax) / 2);
+
+            Debug.Log($"{displayName}: {stickName} stick rests at ({rest.x};{rest.y}), calibration is X {calib.xMin}/{calib.xCenter}/{calib.xMax}, Y {calib.yMin}/{calib.yCenter}/{calib.yMax}");
+
+            int halfRangeX = (calib.xMax - calib.xMin) / 2;
+            int halfRangeY = (calib.yMax - calib.yMin) / 2;
+            if (Mathf.Abs(rest.x - calib.xCenter) <= halfRangeX * tolerance && Mathf.Abs(rest.y - calib.yCenter) <= halfRangeY * tolerance)
+                return;
+
+            Debug.LogWarning($"{displayName}: {stickName} stick calibration is off center, using the current stick position as center");
+            SetStickCenter(ref calib, rest);
+        }
+
+        private static void SetStickCenter(ref StickCalibrationData calib, Vector2Int rest)
+        {
+            int halfRangeX = (calib.xMax - calib.xMin) / 2;
+            int halfRangeY = (calib.yMax - calib.yMin) / 2;
+            calib.xMin = (ushort)Mathf.Clamp(rest.x - halfRangeX, 0, 0xFFF);
+            calib.xMax = (ushort)Mathf.Clamp(rest.x + halfRangeX, 0, 0xFFF);
+            calib.yMin = (ushort)Mathf.Clamp(rest.y - halfRangeY, 0, 0xFFF);
+            calib.yMax = (ushort)Mathf.Clamp(rest.y + halfRangeY, 0, 0xFFF);
+            calib.xCenter = (ushort)rest.x;
+            calib.yCenter = (ushort)rest.y;
+        }
+
+        /// <summary>
+        /// Use the position the stick(s) are in right now as their center. Call this while the sticks are untouched.
+        /// </summary>
+        public void RecenterSticks()
+        {
+            if (SpecificControllerType != SpecificControllerTypeEnum.RightJoyCon)
+                SetStickCenter(ref calibrationData.lStickCalibData, RawLeftStick);
+            if (SpecificControllerType != SpecificControllerTypeEnum.LeftJoyCon)
+                SetStickCenter(ref calibrationData.rStickCalibData, RawRightStick);
+            m_stickRestChecked = true;
+            Debug.Log($"{displayName}: sticks recentered");
+        }
+
         private unsafe void HandleFullReport(StateEvent* stateEvent)
         {
             var currentTime = InputRuntime.s_Instance.currentTime;
@@ -677,6 +753,17 @@ namespace UnityEngine.InputSystem.Switch
 
             SwitchControllerFullInputReport* fullInputReport = ((SwitchControllerFullInputReport*)stateEvent->state);
             m_lastIMUData = fullInputReport->imuData0ms; // Store the latest raw IMU data
+            RawLeftStick = fullInputReport->RawLeftStick;
+            RawRightStick = fullInputReport->RawRightStick;
+
+            if (m_stickConfigDataLoaded && !m_stickRestChecked)
+            {
+                m_stickRestChecked = true;
+                if (SpecificControllerType != SpecificControllerTypeEnum.RightJoyCon)
+                    RecenterStickIfOffCenter(ref calibrationData.lStickCalibData, fullInputReport->RawLeftStick, "Left");
+                if (SpecificControllerType != SpecificControllerTypeEnum.LeftJoyCon)
+                    RecenterStickIfOffCenter(ref calibrationData.rStickCalibData, fullInputReport->RawRightStick, "Right");
+            }
             var hidInputReport = fullInputReport->ToHIDInputReport(ref calibrationData, SpecificControllerType);
 
             // Sensor fusion using Madgwick's algorithm
@@ -742,7 +829,12 @@ namespace UnityEngine.InputSystem.Switch
         {
             DeviceInfo deviceInfo = (DeviceInfo)Marshal.PtrToStructure((IntPtr)dataPtr, typeof(DeviceInfo));
 
-            SpecificControllerType = (SpecificControllerTypeEnum)deviceInfo.joyConType;
+            // Third party controllers sometimes report the wrong type here, so the type given by
+            // the matched layout (i.e. the product ID) wins over what the controller says about itself.
+            var reportedType = (SpecificControllerTypeEnum)deviceInfo.joyConType;
+            SpecificControllerType = LayoutControllerType != SpecificControllerTypeEnum.Unknown ? LayoutControllerType : reportedType;
+            if (reportedType != SpecificControllerType)
+                Debug.LogWarning($"{displayName} reports itself as {reportedType}, treating it as {SpecificControllerType}");
             FirmwareVersion = String.Format($"{deviceInfo.firmwareVersionMaj:X1}.{deviceInfo.firmwareVersionMin:X2}");
             MACAddress = String.Format($"{deviceInfo.macAddress[0]:X2}:{deviceInfo.macAddress[1]:X2}:{deviceInfo.macAddress[2]:X2}:{deviceInfo.macAddress[3]:X2}:{deviceInfo.macAddress[4]:X2}:{deviceInfo.macAddress[5]:X2}");
 
@@ -823,6 +915,15 @@ namespace UnityEngine.InputSystem.Switch
             {
                 Debug.Log("Read controller color data...");
                 DecodeColorData(response);
+            }
+
+            // Some third party controllers only return the body and button colors
+            else if (address == (uint)SPIFlashReadAddressEnum.ColorData && length == 0x06)
+            {
+                Debug.Log("Read controller color data (body and buttons only)...");
+                BodyColor = new Color32(response[0], response[1], response[2], 255);
+                ButtonColor = new Color32(response[3], response[4], response[5], 255);
+                m_colorsLoaded = true;
             }
 
             // Stick device parameters 1
@@ -1068,11 +1169,19 @@ namespace UnityEngine.InputSystem.Switch
 
         private unsafe void DecodeStickCalibrationData(byte* response)
         {
+            // Keep the previous (default) values for sticks whose calibration data is unusable,
+            // e.g. blank flash on a single Joy-Con's missing stick or on third party controllers.
+            var previous = calibrationData;
             DecodeLeftStickData(response);
             DecodeRightStickData(response + 9);
+            if (!calibrationData.lStickCalibData.IsValid)
+                calibrationData.lStickCalibData = previous.lStickCalibData;
+            if (!calibrationData.rStickCalibData.IsValid)
+                calibrationData.rStickCalibData = previous.rStickCalibData;
 
             Debug.Log($"Calibration data loaded");
             m_stickConfigDataLoaded = true;
+            m_stickRestChecked = false;
         }
 
         private unsafe void DecodeColorData(byte* response)
@@ -1176,6 +1285,9 @@ namespace UnityEngine.InputSystem.Switch
             public ushort yMax;
             public ushort xCenter;
             public ushort yCenter;
+
+            public bool IsValid => xMin < xMax && yMin < yMax && xMax <= 0xFFF && yMax <= 0xFFF
+                && xMax - xMin > 0x400 && yMax - yMin > 0x400;
 
             public static StickCalibrationData CreateEmpty()
             {

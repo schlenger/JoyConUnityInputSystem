@@ -12,6 +12,8 @@ namespace UnityEngine.InputSystem.Switch
     {
         static SwitchJoyConLHID()
         {
+            EnsureInputSystemInitialized();
+
             var matcher = new InputDeviceMatcher()
                 .WithInterface("HID")
                 .WithCapability("vendorId", 0x57E)
@@ -29,6 +31,8 @@ namespace UnityEngine.InputSystem.Switch
         /// The last used/added Joy-Con (R) controller.
         /// </summary>
         public static new SwitchJoyConLHID current { get; private set; }
+
+        protected override SpecificControllerTypeEnum LayoutControllerType => SpecificControllerTypeEnum.LeftJoyCon;
 
         /// <inheritdoc />
         public override void MakeCurrent()
@@ -56,6 +60,8 @@ namespace UnityEngine.InputSystem.Switch
     {
         static SwitchJoyConRHID()
         {
+            EnsureInputSystemInitialized();
+
             var matcher = new InputDeviceMatcher()
                 .WithInterface("HID")
                 .WithCapability("vendorId", 0x57E)
@@ -73,6 +79,8 @@ namespace UnityEngine.InputSystem.Switch
         /// The last used/added Joy-Con (R) controller.
         /// </summary>
         public static new SwitchJoyConRHID current { get; private set; }
+
+        protected override SpecificControllerTypeEnum LayoutControllerType => SpecificControllerTypeEnum.RightJoyCon;
 
         /// <inheritdoc />
         public override void MakeCurrent()
@@ -98,11 +106,15 @@ namespace UnityEngine.InputSystem.Switch
     {
         static SwitchProControllerNewHID()
         {
+            EnsureInputSystemInitialized();
+
             var matcher = new InputDeviceMatcher()
                 .WithInterface("HID")
                 .WithCapability("vendorId", 0x57E)
                 .WithCapability("productId", 0x2009)
-                .WithProduct("Wireless Gamepad");
+                // Any product name. The name differs per platform and connection ("Pro Controller" on macOS),
+                // and the extra pattern makes this layout win over the built-in SwitchProControllerHID.
+                .WithProduct(".+");
             
             InputSystem.RegisterLayout<SwitchProControllerNewHID>(matches: matcher);
             
@@ -116,6 +128,8 @@ namespace UnityEngine.InputSystem.Switch
         /// The last used/added Joy-Con (R) controller.
         /// </summary>
         public static new SwitchProControllerNewHID current { get; private set; }
+
+        protected override SpecificControllerTypeEnum LayoutControllerType => SpecificControllerTypeEnum.ProController;
 
         /// <inheritdoc />
         public override void MakeCurrent()
