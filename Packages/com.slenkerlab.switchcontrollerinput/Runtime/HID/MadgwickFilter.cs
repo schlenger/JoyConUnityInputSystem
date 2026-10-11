@@ -2,24 +2,25 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
 {
     /// <summary>
     /// Madgwick's IMU sensor fusion, estimating an orientation from gyroscope and accelerometer readings.
-    /// See: http://www.x-io.co.uk/open-source-imu-and-ahrs-algorithms/
+    /// Implements the IMU variant described in S. Madgwick, "An efficient orientation filter for inertial
+    /// and inertial/magnetic sensor arrays" (2010).
     /// </summary>
     internal struct MadgwickFilter
     {
-        // Quaternion of sensor frame relative to auxiliary frame
-        private float q0, q1, q2, q3;
+        // The estimated orientation as a quaternion
+        private float w, x, y, z;
 
-        public static MadgwickFilter Identity => new MadgwickFilter { q0 = 1.0f };
+        public static MadgwickFilter Identity => new MadgwickFilter { w = 1.0f };
 
         public Quaternion Rotation
         {
-            get => new Quaternion(q1, q2, q3, q0);
+            get => new Quaternion(x, y, z, w);
             set
             {
-                q0 = value.w;
-                q1 = value.x;
-                q2 = value.y;
-                q3 = value.z;
+                w = value.w;
+                x = value.x;
+                y = value.y;
+                z = value.z;
             }
         }
 
@@ -29,73 +30,50 @@ namespace UnityEngine.InputSystem.Switch.LowLevel
         /// <param name="samplePeriod">Time since the previous update in seconds.</param>
         public void Update(Vector3 gyro, Vector3 accel, float beta, float samplePeriod)
         {
-            float gx = gyro.x, gy = gyro.y, gz = gyro.z;
-            float ax = accel.x, ay = accel.y, az = accel.z;
-            float recipNorm;
-            float s0, s1, s2, s3;
-            float qDot1, qDot2, qDot3, qDot4;
-            float _2q0, _2q1, _2q2, _2q3, _4q0, _4q1, _4q2, _8q1, _8q2, q0q0, q1q1, q2q2, q3q3;
+            // Rate of change of the orientation as measured by the gyroscope: 1/2 * q * (0, gyro)
+            float dw = 0.5f * (-x * gyro.x - y * gyro.y - z * gyro.z);
+            float dx = 0.5f * (w * gyro.x + y * gyro.z - z * gyro.y);
+            float dy = 0.5f * (w * gyro.y + z * gyro.x - x * gyro.z);
+            float dz = 0.5f * (w * gyro.z + x * gyro.y - y * gyro.x);
 
-            // Rate of change of quaternion from gyroscope
-            qDot1 = 0.5f * (-q1 * gx - q2 * gy - q3 * gz);
-            qDot2 = 0.5f * (q0 * gx + q2 * gz - q3 * gy);
-            qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
-            qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
-
-            // Compute feedback only if accelerometer measurement valid (avoids NaN in accelerometer normalisation)
-            if (!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f)))
+            // Without a direction of gravity there is nothing to correct the gyroscope with
+            if (accel.sqrMagnitude > 0.0f)
             {
-                // Normalise accelerometer measurement
-                recipNorm = 1.0f / Mathf.Sqrt(ax * ax + ay * ay + az * az);
-                ax *= recipNorm;
-                ay *= recipNorm;
-                az *= recipNorm;
+                Vector3 measuredGravity = accel.normalized;
 
-                // Auxiliary variables to avoid repeated arithmetic
-                _2q0 = 2.0f * q0;
-                _2q1 = 2.0f * q1;
-                _2q2 = 2.0f * q2;
-                _2q3 = 2.0f * q3;
-                _4q0 = 4.0f * q0;
-                _4q1 = 4.0f * q1;
-                _4q2 = 4.0f * q2;
-                _8q1 = 8.0f * q1;
-                _8q2 = 8.0f * q2;
-                q0q0 = q0 * q0;
-                q1q1 = q1 * q1;
-                q2q2 = q2 * q2;
-                q3q3 = q3 * q3;
+                // Objective function: the direction of gravity predicted by the orientation minus the measured one
+                float fx = 2.0f * (x * z - w * y) - measuredGravity.x;
+                float fy = 2.0f * (w * x + y * z) - measuredGravity.y;
+                float fz = 2.0f * (0.5f - x * x - y * y) - measuredGravity.z;
 
-                // Gradient decent algorithm corrective step
-                s0 = _4q0 * q2q2 + _2q2 * ax + _4q0 * q1q1 - _2q1 * ay;
-                s1 = _4q1 * q3q3 - _2q3 * ax + 4.0f * q0q0 * q1 - _2q0 * ay - _4q1 + _8q1 * q1q1 + _8q1 * q2q2 + _4q1 * az;
-                s2 = 4.0f * q0q0 * q2 + _2q0 * ax + _4q2 * q3q3 - _2q3 * ay - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az;
-                s3 = 4.0f * q1q1 * q3 - _2q1 * ax + 4.0f * q2q2 * q3 - _2q2 * ay;
-                recipNorm = 1.0f / Mathf.Sqrt(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3); // normalise step magnitude
-                s0 *= recipNorm;
-                s1 *= recipNorm;
-                s2 *= recipNorm;
-                s3 *= recipNorm;
+                // Its gradient, the transposed Jacobian applied to the objective function
+                float gradW = -2.0f * y * fx + 2.0f * x * fy;
+                float gradX = 2.0f * z * fx + 2.0f * w * fy - 4.0f * x * fz;
+                float gradY = -2.0f * w * fx + 2.0f * z * fy - 4.0f * y * fz;
+                float gradZ = 2.0f * x * fx + 2.0f * y * fy;
 
-                // Apply feedback step
-                qDot1 -= beta * s0;
-                qDot2 -= beta * s1;
-                qDot3 -= beta * s2;
-                qDot4 -= beta * s3;
+                // Only the direction of the gradient is used. It has none when the prediction is already exact.
+                float gradMagnitude = Mathf.Sqrt(gradW * gradW + gradX * gradX + gradY * gradY + gradZ * gradZ);
+                if (gradMagnitude > 0.0f)
+                {
+                    float gain = beta / gradMagnitude;
+                    dw -= gain * gradW;
+                    dx -= gain * gradX;
+                    dy -= gain * gradY;
+                    dz -= gain * gradZ;
+                }
             }
 
-            // Integrate rate of change of quaternion to yield quaternion
-            q0 += qDot1 * samplePeriod;
-            q1 += qDot2 * samplePeriod;
-            q2 += qDot3 * samplePeriod;
-            q3 += qDot4 * samplePeriod;
+            w += dw * samplePeriod;
+            x += dx * samplePeriod;
+            y += dy * samplePeriod;
+            z += dz * samplePeriod;
 
-            // Normalise quaternion
-            recipNorm = 1.0f / Mathf.Sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
-            q0 *= recipNorm;
-            q1 *= recipNorm;
-            q2 *= recipNorm;
-            q3 *= recipNorm;
+            float magnitude = Mathf.Sqrt(w * w + x * x + y * y + z * z);
+            w /= magnitude;
+            x /= magnitude;
+            y /= magnitude;
+            z /= magnitude;
         }
     }
 }

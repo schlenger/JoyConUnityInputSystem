@@ -96,6 +96,8 @@ The HD Rumble features can be tested `Windows/Switch Controller Debugger/Joycon 
 
 The controller's IMU is enabled when it connects, and can be turned off and on with `SwitchControllerHID.SetIMUEnabled()`. The `acceleration` and `angularVelocity` controls use the calibration stored on the controller, the raw values are available as `uncalibratedAcceleration` and `uncalibratedAngularVelocity`. `deviceRotation` is the orientation estimated from both.
 
+`SwitchControllerHID.StartIMUCalibration()` (also available in the debug window) stores its result as the user calibration in the controller's flash memory, replacing a user calibration made on the console.
+
 ### Player LEDs
 
 The green LEDs on the controllers can be set with `SwitchControllerHID.SetLEDs()`.
@@ -124,3 +126,11 @@ However, quitting the application doesn't reset the LEDs. If you want them to ge
   - The `SwitchControllerFullInputReport.ToHIDInputReport()` method follows the [implementation in SwitchFullInputReport](https://github.com/Unity-Technologies/InputSystem/blob/67a8605dc8d2bb67d251117cbe0e371d043e7a13/Packages/com.unity.inputsystem/InputSystem/Plugins/Switch/SwitchProControllerHID.cs#L360).
   - The `SwitchControllerHID.PreProcessEvent()` method is an expanded version of the [implementation in SwitchProControllerHID](https://github.com/Unity-Technologies/InputSystem/blob/67a8605dc8d2bb67d251117cbe0e371d043e7a13/Packages/com.unity.inputsystem/InputSystem/Plugins/Switch/SwitchProControllerHID.cs#L213).
   - The `SwitchControllerVirtualInputState` class is an expanded version of [SwitchProControllerHIDInputState](https://github.com/Unity-Technologies/InputSystem/blob/67a8605dc8d2bb67d251117cbe0e371d043e7a13/Packages/com.unity.inputsystem/InputSystem/Plugins/Switch/SwitchProControllerHID.cs#L20), with support added for Joy-Cons and IMU data. The format was changed from "SPVS" to "SCVS", since it also supports Joy-Cons.
+  - These parts remain subject to the [Unity Companion License](https://unity.com/legal/licenses/unity-companion-license).
+- The orientation filter implements the algorithm from Sebastian Madgwick's paper [An efficient orientation filter for inertial and inertial/magnetic sensor arrays](https://x-io.co.uk/downloads/madgwick_internal_report.pdf)
+
+## Disclaimer
+
+This project is not affiliated with, endorsed by or sponsored by Nintendo. Nintendo Switch, Joy-Con and Pro Controller are trademarks of Nintendo, and are only used here to describe which hardware the package is compatible with. The package contains no code, firmware or assets from Nintendo.
+
+The package is provided as is, without warranty of any kind. It sends commands to your controllers and can write to their flash memory, use it at your own risk.
