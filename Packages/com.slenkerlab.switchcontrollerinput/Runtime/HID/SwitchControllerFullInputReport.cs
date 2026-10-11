@@ -1,0 +1,131 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace UnityEngine.InputSystem.Switch.LowLevel
+{
+    [StructLayout(LayoutKind.Explicit, Size = kSize)]
+    unsafe struct SwitchControllerFullInputReport
+    {
+        public const int kSize = 362;
+
+        [FieldOffset(0)] public byte reportId;
+        [FieldOffset(1)] public byte timer;
+        [FieldOffset(2)] public byte batteryAndConnectionInfo;
+
+        [FieldOffset(3)] public byte rightButtons;
+
+        [FieldOffset(4)] public byte sharedButtons;
+
+        [FieldOffset(5)] public byte leftButtons;
+
+        [FieldOffset(6)] public fixed byte leftStick[3];
+        [FieldOffset(9)] public fixed byte rightStick[3];
+
+        [FieldOffset(12)] public byte vibratorInputReport;
+
+        // For 0x21 (Subcommand replies)
+        // [FieldOffset(13)] public byte subcommandAck;
+        // [FieldOffset(14)] public byte subcommandReplyId;
+        // [FieldOffset(15)] public fixed byte subcommandReplyData[35];
+
+
+        // For 0x23 (NFC/IR MCU FW)
+        // [FieldOffset(13)] public fixed byte nfcIRMCUFWDataInputReport[37];
+
+        // For 0x30, 0x31, 0x32, 0x33 (normal mode)
+        [FieldOffset(13)] public IMUData imuData0ms;
+        [FieldOffset(25)] public IMUData imuData5ms;
+        [FieldOffset(37)] public IMUData imuData10ms;
+
+        // For 0x31 (NFC/IR?)
+        // [FieldOffset(49)] public fixed byte nfcIRDataInputReport[313];
+
+
+        public Vector2Int RawLeftStick => new Vector2Int(leftStick[0] | ((leftStick[1] & 0xF) << 8), (leftStick[1] >> 4) | (leftStick[2] << 4));
+        public Vector2Int RawRightStick => new Vector2Int(rightStick[0] | ((rightStick[1] & 0xF) << 8), (rightStick[1] >> 4) | (rightStick[2] << 4));
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public SwitchControllerVirtualInputState ToHIDInputReport(ref SwitchControllerHID.CalibrationData calibData, bool hasLeftStick, bool hasRightStick)
+        {
+            // A single Joy-Con only has one of the sticks, the other one stays centered
+            var leftStickVec = hasLeftStick ? calibData.lStickCalibData.Normalize(RawLeftStick) : Vector2.zero;
+            var rightStickVec = hasRightStick ? calibData.rStickCalibData.Normalize(RawRightStick) : Vector2.zero;
+
+            Vector3 uncalibratedAccel = imuData0ms.UncalibratedAcceleration;
+            Vector3 uncalibratedGyro = imuData0ms.UncalibratedGyro;
+            Vector3 calibratedAccel = imuData0ms.CalibratedAcceleration(ref calibData.imuCalibData);
+            Vector3 calibratedGyro = imuData0ms.CalibratedGyro(ref calibData.imuCalibData);
+
+            var state = new SwitchControllerVirtualInputState
+            {
+                leftStick = leftStickVec,
+                rightStick = rightStickVec,
+                uncalibratedAcceleration = uncalibratedAccel,
+                uncalibratedAngularVelocity = uncalibratedGyro,
+                acceleration = calibratedAccel,
+                angularVelocity = calibratedGyro
+            };
+
+            state.Set(SwitchControllerVirtualInputState.Button.Y, (rightButtons & 0x01) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.X, (rightButtons & 0x02) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.B, (rightButtons & 0x04) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.A, (rightButtons & 0x08) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.SR, ((leftButtons | rightButtons) & 0x10) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.SL, ((leftButtons | rightButtons) & 0x20) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.R, (rightButtons & 0x40) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.ZR, (rightButtons & 0x80) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.Minus, (sharedButtons & 0x01) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.Plus, (sharedButtons & 0x02) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.StickR, (sharedButtons & 0x04) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.StickL, (sharedButtons & 0x08) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.Down, (leftButtons & 0x01) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.Up, (leftButtons & 0x02) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.Right, (leftButtons & 0x04) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.Left, (leftButtons & 0x08) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.L, (leftButtons & 0x40) != 0);
+            state.Set(SwitchControllerVirtualInputState.Button.ZL, (leftButtons & 0x80) != 0);
+
+            return state;
+        }
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 12)]
+    struct IMUData
+    {
+        [FieldOffset(0)] public short accelX;
+        [FieldOffset(2)] public short accelY;
+        [FieldOffset(4)] public short accelZ;
+
+        [FieldOffset(6)] public short gyro1;
+        [FieldOffset(8)] public short gyro2;
+        [FieldOffset(10)] public short gyro3;
+
+        public Vector3 UncalibratedAcceleration => new Vector3(accelX, accelY, accelZ) * 0.000244f;
+        public Vector3 UncalibratedGyro => new Vector3(gyro1, gyro2, gyro3) * 0.070f;
+
+        public Vector3 CalibratedAcceleration(ref SwitchControllerHID.IMUCalibrationData calib)
+        {
+            if (calib.accelSensitivity.x == 0)
+                return UncalibratedAcceleration;
+
+            float accel_x = (accelX - (short)calib.accelBase.x) * calib.accelCoeff.x;
+            float accel_y = (accelY - (short)calib.accelBase.y) * calib.accelCoeff.y;
+            float accel_z = (accelZ - (short)calib.accelBase.z) * calib.accelCoeff.z;
+
+            return new Vector3(accel_x, accel_y, accel_z);
+        }
+
+        public Vector3 CalibratedGyro(ref SwitchControllerHID.IMUCalibrationData calib)
+        {
+            if (calib.gyroSensitivity.x == 0)
+                return UncalibratedGyro;
+
+            float gyro_x = (gyro1 - (short)calib.gyroBase.x) * calib.gyroCoeff.x;
+            float gyro_y = (gyro2 - (short)calib.gyroBase.y) * calib.gyroCoeff.y;
+            float gyro_z = (gyro3 - (short)calib.gyroBase.z) * calib.gyroCoeff.z;
+
+
+            return new Vector3(gyro_x, gyro_y, gyro_z);
+        }
+    }
+}

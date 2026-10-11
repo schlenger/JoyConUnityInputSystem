@@ -1,30 +1,23 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem.Switch;
 
 public class GyroRotate : MonoBehaviour
 {
-    // Start is called before the first frame update
-    void Start()
-    {
-
-        SwitchControllerHID.current.ReadUserIMUCalibrationData();
-
-    }
-
     // Update is called once per frame
     void Update()
     {
-        if (SwitchControllerHID.current.buttonSouth.wasReleasedThisFrame)
+        SwitchControllerHID controller = SwitchControllerHID.current;
+        if (controller == null)
+            return;
+
+        if (controller.buttonSouth.wasReleasedThisFrame)
         {
-            SwitchControllerHID.current.ReadUserIMUCalibrationData();
-            // SwitchControllerHID.current.SetIMUEnabled(true);
+            controller.ReadUserIMUCalibrationData();
         }
-        if (SwitchControllerHID.current.buttonEast.wasReleasedThisFrame)
+        if (controller.buttonEast.wasReleasedThisFrame)
         {
-            SwitchControllerHID.current.ResetYaw();
+            controller.ResetYaw();
         }
-        transform.localRotation = SwitchControllerHID.current.deviceRotation.ReadValue();
+        transform.localRotation = controller.deviceRotation.ReadValue();
     }
 }

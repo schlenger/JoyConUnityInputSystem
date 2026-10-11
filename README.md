@@ -8,7 +8,7 @@ This is a prototype for Nintendo Switch controller Bluetooth support for the new
 
 ## Installation
 
-Using the Unity Package Manager, add the package from the following git URL: <https://github.com/schlenger/JoyConUnityInputSystem.git?path=/Packages/com.canopteks.switchcontrollerinput>.
+Using the Unity Package Manager, add the package from the following git URL: <https://github.com/schlenger/JoyConUnityInputSystem.git?path=/Packages/com.slenkerlab.switchcontrollerinput>.
 
 The package requires Unity 6 (6000.0) or newer and version 1.20.0 or newer of the Input System package.
 
@@ -25,6 +25,14 @@ The package requires Unity 6 (6000.0) or newer and version 1.20.0 or newer of th
   - Controllers that only return the body and button colors are supported.
 - **Pro Controller**: matched by vendor and product ID regardless of the product name, which differs per platform (e.g. "Pro Controller" on macOS). This also makes the layout take precedence over the Input System's built-in `SwitchProControllerHID`.
 - **Input System 1.20**: fixed the layouts being registered before the Input System is initialized in the editor.
+- **IMU**
+  - The IMU is enabled and its calibration is read when a controller connects. The user calibration is used if the controller has one, otherwise the factory calibration.
+  - The orientation is integrated with the time between the controller's reports instead of a fixed time step.
+  - Writing a user calibration no longer stores unusable values on the controller.
+- **Battery**: the battery level and charging state stay up to date while the controller is connected.
+- **Rumble**: frequencies are clamped to the range the controller supports, see the constants on `SwitchControllerRumbleProfile`.
+- **Player builds**: the package compiles for standalone players.
+- **Logging**: the package only logs warnings and errors, unless `SwitchControllerHID.VerboseLogging` is set to `true`.
 
 ## Notes
 
@@ -86,7 +94,9 @@ The HD Rumble features can be tested `Windows/Switch Controller Debugger/Joycon 
 
 ### Gyroscope and acceleration (partial)
 
-Once the controller's IMU has been enabled with `SwitchControllerHID.SetIMUEnabled(true)`, it will report uncalibrated acceleration and gyroscope data. In my testing, this data isn't particularly accurate, so we should figure out how to improve it.
+The controller's IMU is enabled when it connects, and can be turned off and on with `SwitchControllerHID.SetIMUEnabled()`. The `acceleration` and `angularVelocity` controls use the calibration stored on the controller, the raw values are available as `uncalibratedAcceleration` and `uncalibratedAngularVelocity`. `deviceRotation` is the orientation estimated from both.
+
+`SwitchControllerHID.StartIMUCalibration()` (also available in the debug window) stores its result as the user calibration in the controller's flash memory, replacing a user calibration made on the console.
 
 ### Player LEDs
 
@@ -96,10 +106,10 @@ Example:
 
 ```c#
 controller.SetLEDs(
-    p1: SwitchControllerLEDStatusEnum.Off,
-    p2: SwitchControllerLEDStatusEnum.On,
-    p3: SwitchControllerLEDStatusEnum.Flashing,
-    p4: SwitchControllerLEDStatusEnum.On
+    p1: LEDStatusEnum.Off,
+    p2: LEDStatusEnum.On,
+    p3: LEDStatusEnum.Flashing,
+    p4: LEDStatusEnum.On
     );
 ```
 
@@ -116,3 +126,11 @@ However, quitting the application doesn't reset the LEDs. If you want them to ge
   - The `SwitchControllerFullInputReport.ToHIDInputReport()` method follows the [implementation in SwitchFullInputReport](https://github.com/Unity-Technologies/InputSystem/blob/67a8605dc8d2bb67d251117cbe0e371d043e7a13/Packages/com.unity.inputsystem/InputSystem/Plugins/Switch/SwitchProControllerHID.cs#L360).
   - The `SwitchControllerHID.PreProcessEvent()` method is an expanded version of the [implementation in SwitchProControllerHID](https://github.com/Unity-Technologies/InputSystem/blob/67a8605dc8d2bb67d251117cbe0e371d043e7a13/Packages/com.unity.inputsystem/InputSystem/Plugins/Switch/SwitchProControllerHID.cs#L213).
   - The `SwitchControllerVirtualInputState` class is an expanded version of [SwitchProControllerHIDInputState](https://github.com/Unity-Technologies/InputSystem/blob/67a8605dc8d2bb67d251117cbe0e371d043e7a13/Packages/com.unity.inputsystem/InputSystem/Plugins/Switch/SwitchProControllerHID.cs#L20), with support added for Joy-Cons and IMU data. The format was changed from "SPVS" to "SCVS", since it also supports Joy-Cons.
+  - These parts remain subject to the [Unity Companion License](https://unity.com/legal/licenses/unity-companion-license).
+- The orientation filter implements the algorithm from Sebastian Madgwick's paper [An efficient orientation filter for inertial and inertial/magnetic sensor arrays](https://x-io.co.uk/downloads/madgwick_internal_report.pdf)
+
+## Disclaimer
+
+This project is not affiliated with, endorsed by or sponsored by Nintendo. Nintendo Switch, Joy-Con and Pro Controller are trademarks of Nintendo, and are only used here to describe which hardware the package is compatible with. The package contains no code, firmware or assets from Nintendo.
+
+The package is provided as is, without warranty of any kind. It sends commands to your controllers and can write to their flash memory, use it at your own risk.
